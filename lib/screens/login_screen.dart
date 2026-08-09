@@ -111,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const MonoLabel('Welcome'),
                       const SizedBox(height: 12),
                       Text(
-                        _isSignUp ? 'Create your account' : 'Sign in to EchoMark',
+                        _isSignUp ? 'Create your account' : 'Sign in to Signata',
                         style: theme.textTheme.displayMedium,
                       ),
                       const SizedBox(height: 10),

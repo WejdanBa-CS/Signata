@@ -60,7 +60,7 @@ class HistoryEntry {
 }
 
 class HistoryStore {
-  static const _key = 'em_history_v1';
+  static const _key = 'signata_history_v1';
   static const _maxEntries = 100;
 
   static Future<List<HistoryEntry>> load() async {

@@ -232,7 +232,7 @@ class _Hero extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Text(
-                'EchoMark embeds hidden, encrypted fingerprints inside images, audio, and PDFs — preserving the original experience while letting creators prove ownership and authenticity of their work.',
+                'Signata embeds hidden, encrypted fingerprints inside images, audio, and PDFs — preserving the original experience while letting creators prove ownership and authenticity of their work.',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: EmColors.mutedForeground,
                   height: 1.55,
@@ -468,7 +468,7 @@ class _Features extends StatelessWidget {
           tag: 'Capabilities',
           title: 'One platform, four media formats',
           desc:
-              'EchoMark protects digital content across the formats creators actually ship — without altering how it looks or sounds.',
+              'Signata protects digital content across the formats creators actually ship — without altering how it looks or sounds.',
         ),
         const SizedBox(height: 24),
         for (final f in _features)
@@ -588,7 +588,7 @@ class _Goals extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SectionHeading(
-          tag: 'Why EchoMark',
+          tag: 'Why Signata',
           title: 'Goals',
           desc: 'The principles driving every watermarking decision.',
         ),
@@ -784,7 +784,7 @@ class _Status extends StatelessWidget {
           tag: 'Project status',
           title: 'Currently in early research & prototype',
           desc:
-              "EchoMark is being built milestone by milestone. Here's the roadmap ahead.",
+              "Signata is being built milestone by milestone. Here's the roadmap ahead.",
         ),
         const SizedBox(height: 24),
         for (final (phase, active, title, items) in _milestones)
@@ -904,7 +904,7 @@ class _Footer extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '© ${DateTime.now().year} EchoMark',
+                '© ${DateTime.now().year} Signata',
                 style: const TextStyle(
                     fontSize: 11, color: EmColors.mutedForeground),
               ),

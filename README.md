@@ -1,17 +1,16 @@
-# EchoMark (Flutter)
+# Signata (Flutter)
 
 Invisible ownership. Verifiable authenticity.
 
-Native Flutter conversion of the EchoMark web prototype — digital watermarking for images and structural fingerprinting for PDFs, processing entirely on-device.
+Native Flutter app for digital watermarking — images, audio, video, and PDFs — processing entirely on-device.
 
 ## What's included
 
 - **Home** — full landing story (features, how it works, architecture, roadmap)
-- **Image tool** — LSB watermark embed + standalone verify
-- **PDF tool** — structural SHA-256 fingerprint embed + standalone verify
+- **Tools hub** — Image, Audio, Video, and PDF protect/verify flows
+- **Auth** — email accounts + Google Sign-In gate
 - **History** — local on-device record of every embed/verify run
 - Sealed JSON verification reports (shareable)
-- Watermarked files that verify against the original website prototype (same bit layout / marker format)
 
 ## Run
 
@@ -41,9 +40,9 @@ The APK lands at `build/app/outputs/flutter-apk/app-release.apk`.
 
 ```
 lib/
-  core/           # codecs + sealed report + history
-  screens/        # Home / Image / PDF / History
-  widgets/        # shared EchoMark UI
+  core/           # codecs + sealed report + history + auth
+  screens/        # Home / Tools / History / Account
+  widgets/        # shared Signata UI
   theme.dart
   main.dart
 assets/

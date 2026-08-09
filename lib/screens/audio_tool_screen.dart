@@ -127,9 +127,9 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
     if (outcome == null) return;
     await shareBytes(
       bytes: outcome.markedWav,
-      fileName: 'echomark-${_fileName ?? 'audio.wav'}',
+      fileName: 'signata-${_fileName ?? 'audio.wav'}',
       mimeType: 'audio/wav',
-      text: 'Watermarked with EchoMark',
+      text: 'Watermarked with Signata',
     );
   }
 
@@ -180,7 +180,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           tag: 'Audio watermarking',
           title: 'Inaudible ownership in WAV',
           desc:
-              'EchoMark flips the least-significant bit of 16-bit PCM samples to carry an encrypted ownership claim — inaudible, recoverable, processed on-device.',
+              'Signata flips the least-significant bit of 16-bit PCM samples to carry an encrypted ownership claim — inaudible, recoverable, processed on-device.',
         ),
         const SizedBox(height: 20),
         SegmentedButton<AudioMode>(
@@ -342,13 +342,13 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
         StatusBanner(
           ok: genuine,
           title: genuine
-              ? 'EchoMark audio watermark verified'
+              ? 'Signata audio watermark verified'
               : payload != null
                   ? 'Watermark found but signature is invalid'
                   : 'No watermark found',
           subtitle: genuine
               ? 'The recovered signature matches the ownership claim.'
-              : 'This clip does not carry a readable EchoMark audio fingerprint.',
+              : 'This clip does not carry a readable Signata audio fingerprint.',
         ),
         if (payload != null) ...[
           const SizedBox(height: 14),

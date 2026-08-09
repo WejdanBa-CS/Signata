@@ -1,6 +1,6 @@
 {
-    "name": "echomark",
-    "short_name": "echomark",
+    "name": "Signata",
+    "short_name": "Signata",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

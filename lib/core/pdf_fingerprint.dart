@@ -1,6 +1,6 @@
 /// PDF structural fingerprinting — Dart port of the website prototype.
 ///
-/// The identifier format is identical to the web version (`%%EchoMark:`
+/// The identifier format uses a trailing Signata marker (`%%Signata:`
 /// trailing marker carrying base64 JSON), so documents fingerprinted in the
 /// app verify on the website and vice versa.
 library;
@@ -12,7 +12,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show compute;
 
-const String pdfMark = '%%EchoMark:';
+const String pdfMark = '%%Signata:';
 
 String _bytesToText(Uint8List bytes) => latin1.decode(bytes);
 
@@ -277,7 +277,7 @@ PdfVerifyOutcome _pdfVerifyTask(Uint8List source) {
     );
   }
 
-  // The marker tail starts with "\n%%EchoMark:", so everything before it is
+  // The marker tail starts with "\n%%Signata:", so everything before it is
   // the original document as it existed when the identifier was derived.
   final markIndex = text.lastIndexOf(pdfMark);
   final originalLength = markIndex > 0 ? markIndex - 1 : text.length;

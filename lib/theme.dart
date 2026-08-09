@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// EchoMark design system, translated from the website's oklch palette:
+/// Signata design system, translated from the website's oklch palette:
 /// deep dark teal-slate, signal-cyan primary, emerald "verified" accent.
 class EmColors {
   static const background = Color(0xFF0B151B);
@@ -18,7 +18,7 @@ class EmColors {
   static const input = Color(0x1FFFFFFF);
 }
 
-ThemeData buildEchoMarkTheme() {
+ThemeData buildSignataTheme() {
   final base = ThemeData(
     brightness: Brightness.dark,
     useMaterial3: true,

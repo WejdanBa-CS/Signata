@@ -23,7 +23,7 @@ class AccountScreen extends StatelessWidget {
       children: [
         const SectionHeading(
           tag: 'Account',
-          title: 'Your EchoMark identity',
+          title: 'Your Signata identity',
           desc: 'Signed-in creators are the default owner claim in every tool.',
         ),
         const SizedBox(height: 20),

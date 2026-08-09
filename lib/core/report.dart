@@ -10,7 +10,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 
-const String reportVersion = 'echomark-report/1';
+const String reportVersion = 'signata-report/1';
 
 /// Deterministic JSON: object keys sorted recursively.
 String canonicalize(Object? value) {
@@ -129,5 +129,5 @@ String reportFileName(String subject) {
       .replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
   if (safe.isEmpty) safe = 'asset';
-  return 'echomark-report-$safe.json';
+  return 'signata-report-$safe.json';
 }
