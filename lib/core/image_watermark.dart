@@ -1,6 +1,6 @@
 /// LSB watermark codec — Dart port of the website's canvas-based codec.
 ///
-/// The bit layout is identical to the web prototype (`EMK1` magic, 4-byte
+/// The bit layout uses a Signata magic header (`SGN1`, 4-byte
 /// big-endian length, payload bits spread over the R/G/B least significant
 /// bits of each pixel in row-major order), so a PNG watermarked in the app
 /// verifies on the website and vice versa.
@@ -15,7 +15,7 @@ import 'package:image/image.dart' as img;
 
 import 'fingerprint.dart';
 
-const String _magic = 'EMK1';
+const String _magic = 'SGN1';
 
 /// Payload embedded inside the pixels. Field names match the web prototype.
 class WatermarkPayload {

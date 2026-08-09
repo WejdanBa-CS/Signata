@@ -1,5 +1,5 @@
 /// Video container fingerprinting — profiles an MP4/MOV file and hides a
-/// trailing EchoMark identifier (same pattern as the PDF prototype).
+/// trailing Signata identifier (same pattern as the PDF prototype).
 library;
 
 import 'dart:convert';
@@ -8,7 +8,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show compute;
 
-const String videoMark = '%%EchoMarkVideo:';
+const String videoMark = '%%SignataVideo:';
 
 String _bytesToLatin1(Uint8List bytes) => latin1.decode(bytes, allowInvalid: true);
 

@@ -124,9 +124,9 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
     if (outcome == null) return;
     await shareBytes(
       bytes: outcome.markedBytes,
-      fileName: 'echomark-${_fileName ?? 'document.pdf'}',
+      fileName: 'signata-${_fileName ?? 'document.pdf'}',
       mimeType: 'application/pdf',
-      text: 'Fingerprinted with EchoMark',
+      text: 'Fingerprinted with Signata',
     );
   }
 
@@ -179,7 +179,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
           tag: 'PDF fingerprinting',
           title: 'Fingerprint a document, recover its identifier',
           desc:
-              'EchoMark profiles the internal structure of a PDF — version, object graph, streams and cross-reference tables — derives a SHA-256 structural identifier, then hides it inside the delivered file and reads it back to verify ownership.',
+              'Signata profiles the internal structure of a PDF — version, object graph, streams and cross-reference tables — derives a SHA-256 structural identifier, then hides it inside the delivered file and reads it back to verify ownership.',
         ),
         const SizedBox(height: 20),
         SegmentedButton<PdfMode>(

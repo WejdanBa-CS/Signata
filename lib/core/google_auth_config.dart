@@ -2,7 +2,7 @@
 ///
 /// Create these in Google Cloud Console (APIs & Services → Credentials):
 /// 1. OAuth client type **Web application** → use its ID as [serverClientId]
-/// 2. OAuth client type **Android** with package `app.echomark.echomark` + SHA-1
+/// 2. OAuth client type **Android** with package `app.signata.signata` + SHA-1
 ///    (needed for Google to trust this app; you usually do NOT paste that ID here)
 ///
 /// Fill the values below, or pass them at run time:

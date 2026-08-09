@@ -1,4 +1,4 @@
-/// Auth session for EchoMark.
+/// Auth session for Signata.
 ///
 /// Email accounts are stored on-device (hashed) so the login flow works without
 /// a backend. Google Sign-In uses the platform SDK when configured.
@@ -64,8 +64,8 @@ class AuthService extends ChangeNotifier {
   AuthService._();
   static final AuthService instance = AuthService._();
 
-  static const _sessionKey = 'em_session_v1';
-  static const _usersKey = 'em_users_v1';
+  static const _sessionKey = 'signata_session_v1';
+  static const _usersKey = 'signata_users_v1';
 
   final _secure = const FlutterSecureStorage();
   final _google = GoogleSignIn.instance;
@@ -189,7 +189,7 @@ class AuthService extends ChangeNotifier {
         'Google Client IDs are missing. Add your Web OAuth client ID as '
         'GOOGLE_SERVER_CLIENT_ID (see lib/core/google_auth_config.dart), '
         'and register an Android OAuth client with package '
-        'app.echomark.echomark + your SHA-1.',
+        'app.signata.signata + your SHA-1.',
       );
     }
     if (!_googleReady) {

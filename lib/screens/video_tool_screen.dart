@@ -123,9 +123,9 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
     if (outcome == null) return;
     await shareBytes(
       bytes: outcome.markedBytes,
-      fileName: 'echomark-${_fileName ?? 'video.mp4'}',
+      fileName: 'signata-${_fileName ?? 'video.mp4'}',
       mimeType: 'video/mp4',
-      text: 'Fingerprinted with EchoMark',
+      text: 'Fingerprinted with Signata',
     );
   }
 
@@ -178,7 +178,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           tag: 'Video fingerprinting',
           title: 'Bind ownership to a video container',
           desc:
-              'EchoMark profiles the MP4/MOV atom graph — brand, moov/mdat layout, audio/video tracks — derives a SHA-256 identifier, then hides it in the delivered file.',
+              'Signata profiles the MP4/MOV atom graph — brand, moov/mdat layout, audio/video tracks — derives a SHA-256 identifier, then hides it in the delivered file.',
         ),
         const SizedBox(height: 20),
         SegmentedButton<VideoMode>(

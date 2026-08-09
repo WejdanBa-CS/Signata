@@ -1,5 +1,5 @@
-name: echomark
-description: "EchoMark — invisible ownership, verifiable authenticity. Digital watermarking for images, audio, video, and PDFs."
+name: signata
+description: "Signata — invisible ownership, verifiable authenticity. Digital watermarking for images, audio, video, and PDFs."
 publish_to: 'none'
 
 version: 1.0.0+1

@@ -16,11 +16,11 @@ Future<void> main() async {
     ),
   );
   await AuthService.instance.initialize();
-  runApp(const EchoMarkApp());
+  runApp(const SignataApp());
 }
 
-class EchoMarkApp extends StatelessWidget {
-  const EchoMarkApp({super.key});
+class SignataApp extends StatelessWidget {
+  const SignataApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +29,9 @@ class EchoMarkApp extends StatelessWidget {
       builder: (context, _) {
         final auth = AuthService.instance;
         return MaterialApp(
-          title: 'EchoMark',
+          title: 'Signata',
           debugShowCheckedModeBanner: false,
-          theme: buildEchoMarkTheme(),
+          theme: buildSignataTheme(),
           home: !auth.isReady
               ? const Scaffold(
                   body: Center(

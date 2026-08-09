@@ -125,9 +125,9 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     if (outcome == null) return;
     await shareBytes(
       bytes: outcome.markedPng,
-      fileName: 'echomark-${_fileName ?? 'image'}.png',
+      fileName: 'signata-${_fileName ?? 'image'}.png',
       mimeType: 'image/png',
-      text: 'Watermarked with EchoMark',
+      text: 'Watermarked with Signata',
     );
   }
 
@@ -180,7 +180,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           tag: 'Live prototype',
           title: 'Embed, extract, verify — on your device',
           desc:
-              'Pick an image and EchoMark encodes an ownership fingerprint into the pixel data, then reads it back out of the delivered file and verifies the signature. Nothing leaves your device.',
+              'Pick an image and Signata encodes an ownership fingerprint into the pixel data, then reads it back out of the delivered file and verifies the signature. Nothing leaves your device.',
         ),
         const SizedBox(height: 20),
         SegmentedButton<ToolMode>(
@@ -227,7 +227,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
                     : 'Choose an image to check',
                 hint: _mode == ToolMode.embed
                     ? 'PNG, JPG or WEBP — processed locally'
-                    : 'Works with any PNG carrying an EchoMark watermark',
+                    : 'Works with any PNG carrying an Signata watermark',
                 buttonLabel: 'Choose an image',
                 onPick: _pickAndRun,
                 fileName: _fileName,
@@ -335,7 +335,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
         StatusBanner(
           ok: genuine,
           title: genuine
-              ? 'EchoMark watermark verified'
+              ? 'Signata watermark verified'
               : verifyPayload != null
                   ? 'Watermark found but signature is invalid'
                   : 'No watermark found',
@@ -343,7 +343,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
               ? 'The recovered signature matches the ownership claim.'
               : verifyPayload != null
                   ? 'The payload was recovered but fails the signature recheck.'
-                  : 'This file does not carry a readable EchoMark fingerprint.',
+                  : 'This file does not carry a readable Signata fingerprint.',
         ),
         if (verifyPayload != null) ...[
           const SizedBox(height: 14),

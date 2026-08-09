@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:echomark/core/audio_watermark.dart';
-import 'package:echomark/core/fingerprint.dart';
-import 'package:echomark/core/image_watermark.dart';
-import 'package:echomark/core/pdf_fingerprint.dart';
-import 'package:echomark/core/report.dart';
-import 'package:echomark/core/video_fingerprint.dart';
+import 'package:signata/core/audio_watermark.dart';
+import 'package:signata/core/fingerprint.dart';
+import 'package:signata/core/image_watermark.dart';
+import 'package:signata/core/pdf_fingerprint.dart';
+import 'package:signata/core/report.dart';
+import 'package:signata/core/video_fingerprint.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 

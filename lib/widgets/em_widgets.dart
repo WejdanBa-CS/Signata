@@ -24,7 +24,7 @@ class EmLogo extends StatelessWidget {
         mark,
         const SizedBox(width: 10),
         Text(
-          'EchoMark',
+          'Signata',
           style: Theme.of(context)
               .textTheme
               .titleLarge

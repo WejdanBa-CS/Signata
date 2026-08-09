@@ -5,7 +5,7 @@ import 'package:image/image.dart' as img;
 
 /// Builds adaptive-icon layers:
 /// - foreground: fingerprint on transparent canvas, scaled into the safe zone
-/// - background: solid EchoMark navy
+/// - background: solid Signata navy
 void main() {
   final source = img.decodeImage(File('assets/icon.png').readAsBytesSync());
   if (source == null) {

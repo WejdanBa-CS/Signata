@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart' show compute;
 
 import 'fingerprint.dart';
 
-const String _magic = 'EMA1';
+const String _magic = 'SGA1';
 
 class AudioPayload {
   const AudioPayload({
