@@ -17,7 +17,7 @@ import '../widgets/publish_claim_button.dart';
 enum ToolMode { embed, verify }
 
 class ImageToolScreen extends StatefulWidget {
-  const ImageToolScreen({super.key, this.defaultOwner = 'Studio Nova'});
+  const ImageToolScreen({super.key, this.defaultOwner = ''});
 
   final String defaultOwner;
 
@@ -137,6 +137,31 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     );
   }
 
+  Future<void> _downloadMarked() async {
+    final outcome = _embedOutcome;
+    if (outcome == null) return;
+    try {
+      final path = await downloadBytes(
+        bytes: outcome.markedPng,
+        fileName: 'signata-${_fileName ?? 'image'}.png',
+        dialogTitle: 'Download watermarked image',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved to $path')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _exportReport() async {
     final outcome = _embedOutcome;
     if (outcome == null) return;
@@ -243,10 +268,21 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
                 const SizedBox(height: 16),
                 _ImagePair(outcome: _embedOutcome!),
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _shareMarked,
-                  icon: const Icon(Icons.ios_share, size: 18),
-                  label: const Text('Share watermarked PNG'),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _downloadMarked,
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Download'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _shareMarked,
+                      icon: const Icon(Icons.ios_share, size: 18),
+                      label: const Text('Share'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 PublishClaimButton(

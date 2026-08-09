@@ -20,7 +20,7 @@ void main() {
     test('publishes and finds claims locally by reference', () async {
       final published = await ClaimRegistry.instance.publish(
         medium: TraceMedium.image,
-        owner: 'Studio Nova',
+        owner: 'Creator',
         subject: 'art.png·120x90',
         reference: 'ABC123HMAC',
         issued: '2026-01-01T00:00:00Z',
@@ -31,7 +31,7 @@ void main() {
       final found =
           await ClaimRegistry.instance.findByReference('abc123hmac');
       expect(found, isNotNull);
-      expect(found!.owner, 'Studio Nova');
+      expect(found!.owner, 'Creator');
       expect(found.subject, 'art.png·120x90');
     });
   });
@@ -53,7 +53,7 @@ void main() {
         at: DateTime.utc(2026, 1, 2),
         found: true,
         claimStatus: ClaimStatus.authenticated,
-        owner: 'Studio Nova',
+        owner: 'Creator',
         reference: 'ABC',
       ));
       final sightings = await TraceStore.instance.listSightings();

@@ -17,7 +17,7 @@ import '../widgets/publish_claim_button.dart';
 enum VideoMode { embed, verify }
 
 class VideoToolScreen extends StatefulWidget {
-  const VideoToolScreen({super.key, this.defaultOwner = 'Studio Nova'});
+  const VideoToolScreen({super.key, this.defaultOwner = ''});
 
   final String defaultOwner;
 
@@ -133,6 +133,31 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
       mimeType: 'video/mp4',
       text: 'Fingerprinted with Signata',
     );
+  }
+
+  Future<void> _downloadMarked() async {
+    final outcome = _embedOutcome;
+    if (outcome == null) return;
+    try {
+      final path = await downloadBytes(
+        bytes: outcome.markedBytes,
+        fileName: 'signata-${_fileName ?? 'video.mp4'}',
+        dialogTitle: 'Download fingerprinted video',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved to $path')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _exportReport() async {
@@ -254,10 +279,21 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
               ],
               if (_embedOutcome != null) ...[
                 const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed: _shareMarked,
-                  icon: const Icon(Icons.ios_share, size: 18),
-                  label: const Text('Share fingerprinted video'),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _downloadMarked,
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Download'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _shareMarked,
+                      icon: const Icon(Icons.ios_share, size: 18),
+                      label: const Text('Share'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 PublishClaimButton(
