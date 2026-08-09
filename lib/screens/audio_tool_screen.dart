@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../core/audio_watermark.dart';
+import '../core/claim_crypto.dart';
+import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
@@ -68,12 +70,14 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      final claimKey = await AccountClaimKeys.current();
       if (_mode == AudioMode.embed) {
         setState(() => _workingStep = 'Embedding inaudible fingerprint');
         final outcome = await embedAudioWatermark(
           fileBytes: bytes,
           owner: _ownerController.text,
           fileName: file.name,
+          claimKey: claimKey,
         );
         stopwatch.stop();
         if (!mounted) return;
@@ -87,13 +91,13 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           action: 'embed',
           subject: file.name,
           owner: outcome.payload.owner,
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.payload.signature,
           at: DateTime.now(),
         ));
       } else {
         setState(() => _workingStep = 'Scanning audio samples');
-        final outcome = await extractAudioWatermark(bytes);
+        final outcome = await extractAudioWatermark(bytes, claimKey: claimKey);
         stopwatch.stop();
         final payload = AudioPayload.tryParse(outcome.raw);
         if (!mounted) return;
@@ -108,7 +112,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           action: 'verify',
           subject: file.name,
           owner: payload?.owner ?? 'Unknown',
-          verified: payload?.signatureValid ?? false,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: payload?.signature ?? '—',
           at: DateTime.now(),
         ));
@@ -142,7 +146,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
         medium: 'audio',
         subject: _fileName ?? outcome.payload.asset,
         owner: outcome.payload.owner,
-        verified: outcome.verified,
+        verified: claimCountsAsVerified(outcome.claimStatus),
         issued: outcome.payload.issued,
         generated: DateTime.now().toUtc().toIso8601String(),
         evidence: {
@@ -180,7 +184,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           tag: 'Audio watermarking',
           title: 'Inaudible ownership in WAV',
           desc:
-              'Signata flips the least-significant bit of 16-bit PCM samples to carry an encrypted ownership claim — inaudible, recoverable, processed on-device.',
+              'Signata flips the least-significant bit of 16-bit PCM samples to carry a signed ownership claim — inaudible, recoverable, processed on-device.',
         ),
         const SizedBox(height: 20),
         SegmentedButton<AudioMode>(
@@ -302,21 +306,23 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
     if (_mode == AudioMode.embed && _embedOutcome != null) {
       final outcome = _embedOutcome!;
       final recovered = outcome.recovered;
+      final banner = claimBanner(outcome.claimStatus);
       return [
         StatusBanner(
-          ok: outcome.verified,
-          title: outcome.verified
-              ? 'Ownership verified'
-              : 'No valid watermark recovered',
-          subtitle: outcome.verified
-              ? 'Extracted signature matches the embedded fingerprint.'
-              : 'The payload could not be read back intact from this file.',
+          ok: banner.ok,
+          title: banner.title,
+          subtitle: banner.subtitle,
         ),
         const SizedBox(height: 14),
         DetailList(rows: [
           DetailRow('Owner', recovered?.owner ?? '—'),
           DetailRow('Asset', recovered?.asset ?? '—', mono: true),
           DetailRow('Signature', recovered?.signature ?? '—', mono: true),
+          DetailRow(
+              'Key id',
+              _kidLabel(recovered?.alg ?? outcome.payload.alg,
+                  recovered?.kid ?? outcome.payload.kid),
+              mono: true),
           DetailRow('Round trip', '$_elapsedMs ms', mono: true),
         ]),
         const SizedBox(height: 14),
@@ -337,18 +343,12 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
 
     if (_mode == AudioMode.verify && _verifyOutcome != null) {
       final payload = _verifyPayload;
-      final genuine = payload != null && payload.signatureValid;
+      final banner = claimBanner(_verifyOutcome!.claimStatus);
       return [
         StatusBanner(
-          ok: genuine,
-          title: genuine
-              ? 'Signata audio watermark verified'
-              : payload != null
-                  ? 'Watermark found but signature is invalid'
-                  : 'No watermark found',
-          subtitle: genuine
-              ? 'The recovered signature matches the ownership claim.'
-              : 'This clip does not carry a readable Signata audio fingerprint.',
+          ok: banner.ok,
+          title: banner.title,
+          subtitle: banner.subtitle,
         ),
         if (payload != null) ...[
           const SizedBox(height: 14),
@@ -356,6 +356,8 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
             DetailRow('Owner', payload.owner),
             DetailRow('Asset', payload.asset, mono: true),
             DetailRow('Signature', payload.signature, mono: true),
+            DetailRow(
+                'Key id', _kidLabel(payload.alg, payload.kid), mono: true),
             DetailRow(
                 'Format',
                 '${_verifyOutcome!.sampleRate} Hz · ${_verifyOutcome!.channels} ch',
@@ -374,5 +376,11 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
         style: TextStyle(fontSize: 13, color: EmColors.mutedForeground),
       ),
     ];
+  }
+
+  static String _kidLabel(String? alg, String? kid) {
+    if (alg == null || alg.isEmpty || alg == claimAlgFnv16) return 'legacy';
+    if (kid != null && kid.isNotEmpty) return kid;
+    return 'legacy';
   }
 }

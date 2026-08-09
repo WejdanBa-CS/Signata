@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../core/claim_crypto.dart';
+import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/pdf_fingerprint.dart';
 import '../core/report.dart';
@@ -67,12 +69,14 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      final claimKey = await AccountClaimKeys.current();
       if (_mode == PdfMode.embed) {
         setState(() => _workingStep = 'Deriving structural identifier');
         final outcome = await embedPdfFingerprint(
           source: bytes,
           owner: _ownerController.text,
           fileName: file.name,
+          claimKey: claimKey,
         );
         stopwatch.stop();
         if (!mounted) return;
@@ -86,13 +90,13 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
           action: 'embed',
           subject: file.name,
           owner: outcome.payload.owner,
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.payload.identifier,
           at: DateTime.now(),
         ));
       } else {
         setState(() => _workingStep = 'Extracting & verifying');
-        final outcome = await verifyPdfFingerprint(bytes);
+        final outcome = await verifyPdfFingerprint(bytes, claimKey: claimKey);
         stopwatch.stop();
         if (!mounted) return;
         setState(() {
@@ -105,7 +109,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
           action: 'verify',
           subject: file.name,
           owner: outcome.recovered?.owner ?? 'Unknown',
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.recovered?.identifier ?? '—',
           at: DateTime.now(),
         ));
@@ -139,7 +143,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
         medium: 'pdf',
         subject: outcome.recovered?.document ?? _fileName ?? 'document.pdf',
         owner: outcome.recovered?.owner ?? 'Unknown',
-        verified: outcome.verified,
+        verified: claimCountsAsVerified(outcome.claimStatus),
         issued: outcome.payload.issued,
         generated: DateTime.now().toUtc().toIso8601String(),
         evidence: {
@@ -268,7 +272,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
               ..._buildReport(),
               const SizedBox(height: 14),
               const Text(
-                'Prototype note: the identifier is carried in a trailing marker for illustration. The production engine distributes it across object metadata and structural entropy so it survives re-saving and editing.',
+                'Prototype note: the identifier is carried in a trailing marker comment and signed with your account key for illustration. Production distributes it across object metadata and structural entropy so it survives re-saving and editing.',
                 style: TextStyle(
                     fontSize: 11.5,
                     height: 1.5,
@@ -309,9 +313,9 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
     final recovered = _mode == PdfMode.embed
         ? _embedOutcome?.recovered
         : _verifyOutcome?.recovered;
-    final verified = _mode == PdfMode.embed
-        ? _embedOutcome?.verified
-        : _verifyOutcome?.verified;
+    final claimStatus = _mode == PdfMode.embed
+        ? _embedOutcome?.claimStatus
+        : _verifyOutcome?.claimStatus;
     final structureMatch = _mode == PdfMode.embed
         ? _embedOutcome?.structureMatch
         : _verifyOutcome?.structureMatch;
@@ -332,15 +336,16 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
       ];
     }
 
+    final banner = claimBanner(claimStatus ?? ClaimStatus.missing);
+    final payload = _mode == PdfMode.embed
+        ? _embedOutcome?.payload
+        : _verifyOutcome?.recovered;
+
     return [
       StatusBanner(
-        ok: verified ?? false,
-        title: (verified ?? false)
-            ? 'Document ownership verified'
-            : 'No valid fingerprint found',
-        subtitle: (verified ?? false)
-            ? 'Recovered identifier matches the recomputed structural digest.'
-            : 'The identifier could not be recovered or did not match the structure.',
+        ok: banner.ok,
+        title: banner.title,
+        subtitle: banner.subtitle,
       ),
       const SizedBox(height: 14),
       DetailList(rows: [
@@ -352,6 +357,10 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
         DetailRow(
             'Structure match',
             (structureMatch ?? false) ? 'identical' : 'mismatch',
+            mono: true),
+        DetailRow(
+            'Key id',
+            _kidLabel(payload?.alg ?? recovered?.alg, payload?.kid ?? recovered?.kid),
             mono: true),
         DetailRow('Round trip', '$_elapsedMs ms', mono: true),
       ]),
@@ -386,5 +395,11 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} '
         '${two(parsed.hour)}:${two(parsed.minute)}';
+  }
+
+  static String _kidLabel(String? alg, String? kid) {
+    if (alg == null || alg.isEmpty || alg == claimAlgFnv16) return 'legacy';
+    if (kid != null && kid.isNotEmpty) return kid;
+    return 'legacy';
   }
 }

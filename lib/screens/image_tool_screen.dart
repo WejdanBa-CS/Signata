@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../core/claim_crypto.dart';
+import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/image_watermark.dart';
 import '../core/report.dart';
@@ -66,12 +68,14 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      final claimKey = await AccountClaimKeys.current();
       if (_mode == ToolMode.embed) {
-        setState(() => _workingStep = 'Embedding encrypted fingerprint');
+        setState(() => _workingStep = 'Embedding signed ownership fingerprint');
         final outcome = await embedWatermark(
           fileBytes: bytes,
           owner: _ownerController.text,
           fileName: file.name,
+          claimKey: claimKey,
         );
         stopwatch.stop();
         if (!mounted) return;
@@ -85,13 +89,13 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           action: 'embed',
           subject: file.name,
           owner: outcome.payload.owner,
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.payload.signature,
           at: DateTime.now(),
         ));
       } else {
         setState(() => _workingStep = 'Scanning for a watermark');
-        final outcome = await extractWatermark(bytes);
+        final outcome = await extractWatermark(bytes, claimKey: claimKey);
         stopwatch.stop();
         final payload = WatermarkPayload.tryParse(outcome.raw);
         if (!mounted) return;
@@ -106,7 +110,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           action: 'verify',
           subject: file.name,
           owner: payload?.owner ?? 'Unknown',
-          verified: payload?.signatureValid ?? false,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: payload?.signature ?? '—',
           at: DateTime.now(),
         ));
@@ -141,7 +145,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
         medium: 'image',
         subject: _fileName ?? outcome.payload.asset,
         owner: outcome.payload.owner,
-        verified: outcome.verified,
+        verified: claimCountsAsVerified(outcome.claimStatus),
         issued: outcome.payload.issued,
         generated: DateTime.now().toUtc().toIso8601String(),
         evidence: {
@@ -257,8 +261,8 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
               const SizedBox(height: 14),
               Text(
                 _mode == ToolMode.embed
-                    ? 'Prototype note: this demo uses least-significant-bit encoding for illustration. The production engine adds encryption and transform-robust embedding server-side.'
-                    : 'Verification recomputes the fingerprint from the recovered claim, so a forged or edited payload is detected. Lossy formats (JPG) destroy LSB watermarks by design.',
+                    ? 'Prototype note: this demo uses scattered least-significant-bit encoding signed with your account key for illustration. The production engine adds transform-robust embedding server-side.'
+                    : 'Verification recomputes the signed ownership claim from the recovered payload, so a forged or edited fingerprint is detected. Lossy formats (JPG) destroy LSB watermarks by design.',
                 style: const TextStyle(
                     fontSize: 11.5,
                     height: 1.5,
@@ -299,15 +303,16 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     final embed = _embedOutcome;
     if (_mode == ToolMode.embed && embed != null) {
       final recovered = embed.recovered;
+      final banner = claimBanner(embed.claimStatus);
+      var subtitle = banner.subtitle;
+      if (embed.resized) {
+        subtitle = '$subtitle Image was resized to fit the LSB carrier.';
+      }
       return [
         StatusBanner(
-          ok: embed.verified,
-          title: embed.verified
-              ? 'Ownership verified'
-              : 'No valid watermark recovered',
-          subtitle: embed.verified
-              ? 'Extracted signature matches the embedded fingerprint.'
-              : 'The payload could not be read back intact from this file.',
+          ok: banner.ok,
+          title: banner.title,
+          subtitle: subtitle,
         ),
         const SizedBox(height: 14),
         DetailList(rows: [
@@ -315,6 +320,11 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           DetailRow('Asset', recovered?.asset ?? '—', mono: true),
           DetailRow('Issued', _formatDate(recovered?.issued)),
           DetailRow('Signature', recovered?.signature ?? '—', mono: true),
+          DetailRow(
+              'Key id',
+              _kidLabel(recovered?.alg ?? embed.payload.alg,
+                  recovered?.kid ?? embed.payload.kid),
+              mono: true),
           DetailRow(
               'Payload density',
               '${embed.bitsUsed} / ${embed.capacityBits} bits',
@@ -330,20 +340,12 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
 
     final verifyPayload = _verifyPayload;
     if (_mode == ToolMode.verify && _verifyOutcome != null) {
-      final genuine = verifyPayload != null && verifyPayload.signatureValid;
+      final banner = claimBanner(_verifyOutcome!.claimStatus);
       return [
         StatusBanner(
-          ok: genuine,
-          title: genuine
-              ? 'Signata watermark verified'
-              : verifyPayload != null
-                  ? 'Watermark found but signature is invalid'
-                  : 'No watermark found',
-          subtitle: genuine
-              ? 'The recovered signature matches the ownership claim.'
-              : verifyPayload != null
-                  ? 'The payload was recovered but fails the signature recheck.'
-                  : 'This file does not carry a readable Signata fingerprint.',
+          ok: banner.ok,
+          title: banner.title,
+          subtitle: banner.subtitle,
         ),
         if (verifyPayload != null) ...[
           const SizedBox(height: 14),
@@ -352,6 +354,10 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
             DetailRow('Asset', verifyPayload.asset, mono: true),
             DetailRow('Issued', _formatDate(verifyPayload.issued)),
             DetailRow('Signature', verifyPayload.signature, mono: true),
+            DetailRow(
+                'Key id',
+                _kidLabel(verifyPayload.alg, verifyPayload.kid),
+                mono: true),
             DetailRow('Scan time', '$_elapsedMs ms', mono: true),
           ]),
           const SizedBox(height: 14),
@@ -394,6 +400,12 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} '
         '${two(parsed.hour)}:${two(parsed.minute)}';
+  }
+
+  static String _kidLabel(String? alg, String? kid) {
+    if (alg == null || alg.isEmpty || alg == claimAlgFnv16) return 'legacy';
+    if (kid != null && kid.isNotEmpty) return kid;
+    return 'legacy';
   }
 }
 
