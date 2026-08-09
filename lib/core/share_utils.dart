@@ -5,6 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'social_platforms.dart';
+import 'social_protect.dart';
+
 /// Writes [bytes] to a temp file and opens the native share sheet, letting
 /// the user save to Files, AirDrop, message, etc.
 Future<void> shareBytes({
@@ -22,6 +25,41 @@ Future<void> shareBytes({
       text: text,
     ),
   );
+}
+
+/// Shares one or more fingerprinted social assets, then optionally opens the
+/// target app (Instagram / TikTok / X) so the user can finish posting.
+Future<void> shareProtectedToSocial({
+  required SocialPlatformInfo platform,
+  required List<SocialProtectItem> items,
+  String? caption,
+  bool openAppAfterShare = true,
+}) async {
+  if (items.isEmpty) return;
+  final dir = await getTemporaryDirectory();
+  final files = <XFile>[];
+  for (final item in items) {
+    final path =
+        '${dir.path}${Platform.pathSeparator}signata-${platform.shortLabel}-${item.fileName}';
+    final file = File(path);
+    await file.writeAsBytes(item.bytes, flush: true);
+    files.add(XFile(file.path, mimeType: item.mimeType, name: item.fileName));
+  }
+
+  await SharePlus.instance.share(
+    ShareParams(
+      files: files,
+      text: caption ??
+          'Protected with Signata · ready for ${platform.label}',
+      subject: 'Signata · ${platform.label}',
+    ),
+  );
+
+  if (openAppAfterShare) {
+    try {
+      await platform.openApp();
+    } catch (_) {}
+  }
 }
 
 /// Saves [bytes] via the native save/download dialog.
