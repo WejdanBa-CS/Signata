@@ -39,7 +39,7 @@ class TraceStore {
 
   Future<WatchTarget> addWatchTarget(String url, {String? label}) async {
     final normalized = url.trim();
-    final existing = await listWatchTargets();
+    final existing = List<WatchTarget>.from(await listWatchTargets());
     final prior = existing.where((w) => w.url == normalized).toList();
     if (prior.isNotEmpty) return prior.first;
     final target = WatchTarget(
@@ -91,7 +91,7 @@ class TraceStore {
   }
 
   Future<void> addSighting(TraceSighting sighting) async {
-    final items = await listSightings();
+    final items = List<TraceSighting>.from(await listSightings());
     items.insert(0, sighting);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(

@@ -10,6 +10,7 @@ import 'claim_crypto.dart';
 import 'claim_registry.dart';
 import 'image_watermark.dart';
 import 'pdf_fingerprint.dart';
+import 'social_platforms.dart';
 import 'trace_models.dart';
 import 'trace_store.dart';
 import 'video_fingerprint.dart';
@@ -43,12 +44,53 @@ class UrlTracer {
       throw ArgumentError('Enter a valid http(s) URL to a media file.');
     }
 
+    var fetchUrl = url;
+    String? socialNote;
+    final social = SocialPlatformInfo.fromUrl(url);
+    if (social != null && !_looksLikeDirectMedia(url)) {
+      final resolved = await SocialMediaResolver.instance.resolve(url);
+      socialNote = resolved?.note;
+      if (resolved?.mediaUrl != null && resolved!.mediaUrl!.isNotEmpty) {
+        fetchUrl = resolved.mediaUrl!;
+      } else if (resolved != null) {
+        final sighting = TraceSighting(
+          id: _id(),
+          url: url,
+          medium: TraceMedium.unknown,
+          at: DateTime.now().toUtc(),
+          found: false,
+          claimStatus: ClaimStatus.missing,
+          error: resolved.note ??
+              '${social.label} link could not be resolved to a media file.',
+        );
+        if (persist) await TraceStore.instance.addSighting(sighting);
+        if (addToWatchlist) {
+          final watch = await TraceStore.instance.addWatchTarget(
+            url,
+            label: social.label,
+          );
+          await TraceStore.instance.touchWatchTarget(
+            watch.id,
+            reference: null,
+          );
+        }
+        return TraceScanResult(sighting: sighting);
+      }
+    }
+
     Uint8List bytes;
     String? contentType;
     try {
-      final response = await http.get(Uri.parse(url)).timeout(
-            const Duration(seconds: 45),
-          );
+      final response = await http.get(
+        Uri.parse(fetchUrl),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (compatible; SignataTrace/1.0; +https://signata.app)',
+          'Accept': '*/*',
+        },
+      ).timeout(
+        const Duration(seconds: 45),
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('Download failed (${response.statusCode}).');
       }
@@ -58,6 +100,8 @@ class UrlTracer {
       bytes = response.bodyBytes;
       contentType = response.headers['content-type'];
     } catch (error) {
+      final message = socialNote ??
+          error.toString().replaceFirst('Exception: ', '');
       final sighting = TraceSighting(
         id: _id(),
         url: url,
@@ -65,7 +109,7 @@ class UrlTracer {
         at: DateTime.now().toUtc(),
         found: false,
         claimStatus: ClaimStatus.missing,
-        error: error.toString().replaceFirst('Exception: ', ''),
+        error: message,
       );
       if (persist) await TraceStore.instance.addSighting(sighting);
       return TraceScanResult(sighting: sighting);
@@ -94,7 +138,10 @@ class UrlTracer {
 
     if (persist) await TraceStore.instance.addSighting(sighting);
     if (addToWatchlist) {
-      final watch = await TraceStore.instance.addWatchTarget(url);
+      final watch = await TraceStore.instance.addWatchTarget(
+        url,
+        label: social?.label,
+      );
       await TraceStore.instance.touchWatchTarget(
         watch.id,
         reference: sighting.reference,
@@ -131,6 +178,20 @@ class UrlTracer {
     return uri != null &&
         (uri.scheme == 'http' || uri.scheme == 'https') &&
         uri.host.isNotEmpty;
+  }
+
+  static bool _looksLikeDirectMedia(String url) {
+    final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
+    return path.endsWith('.png') ||
+        path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.webp') ||
+        path.endsWith('.gif') ||
+        path.endsWith('.mp4') ||
+        path.endsWith('.mov') ||
+        path.endsWith('.m4v') ||
+        path.endsWith('.wav') ||
+        path.endsWith('.pdf');
   }
 
   static String _id() => 'sight_${DateTime.now().toUtc().microsecondsSinceEpoch}';

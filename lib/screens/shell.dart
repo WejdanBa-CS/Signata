@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
+import '../core/share_ingress.dart';
 import '../widgets/em_widgets.dart';
 import 'account_screen.dart';
 import 'audio_tool_screen.dart';
@@ -23,6 +24,39 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   EmTool? _activeTool;
   final _historyKey = GlobalKey<HistoryScreenState>();
+  List<SharedIngressFile> _pendingShared = const [];
+  int _traceNonce = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ShareIngress.instance.listen(_onShared);
+  }
+
+  @override
+  void dispose() {
+    ShareIngress.instance.dispose();
+    super.dispose();
+  }
+
+  void _onShared(List<SharedIngressFile> files) {
+    if (!mounted || files.isEmpty) return;
+    setState(() {
+      _pendingShared = files;
+      _traceNonce++;
+      _index = 1;
+      _activeTool = EmTool.trace;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          files.any((f) => f.text != null)
+              ? 'Shared link ready to scan in Trace'
+              : 'Shared media ready to fingerprint in Trace',
+        ),
+      ),
+    );
+  }
 
   void _openTab(int index) {
     setState(() {
@@ -40,7 +74,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   String get _defaultOwner =>
-      AuthService.instance.user?.displayName?.trim() ?? '';
+      AuthService.instance.user?.displayName.trim() ?? '';
 
   Widget _toolScreen(EmTool tool) {
     switch (tool) {
@@ -53,7 +87,11 @@ class _AppShellState extends State<AppShell> {
       case EmTool.pdf:
         return PdfToolScreen(defaultOwner: _defaultOwner);
       case EmTool.trace:
-        return const TraceScreen();
+        final shared = _pendingShared;
+        return TraceScreen(
+          key: ValueKey('trace-$_traceNonce'),
+          initialSharedFiles: shared,
+        );
     }
   }
 
@@ -74,7 +112,10 @@ class _AppShellState extends State<AppShell> {
         leading: inTool
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => _activeTool = null),
+                onPressed: () => setState(() {
+                      _activeTool = null;
+                      _pendingShared = const [];
+                    }),
               )
             : null,
         title: inTool
