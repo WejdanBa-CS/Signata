@@ -17,8 +17,8 @@ void main() {
 
   group('fingerprint', () {
     test('is deterministic and 16 hex chars', () {
-      final a = fingerprint('Studio Nova|photo.png·900x600|2026-01-01');
-      final b = fingerprint('Studio Nova|photo.png·900x600|2026-01-01');
+      final a = fingerprint('Creator|photo.png·900x600|2026-01-01');
+      final b = fingerprint('Creator|photo.png·900x600|2026-01-01');
       expect(a, b);
       expect(a, matches(RegExp(r'^[0-9A-F]{16}$')));
     });
@@ -104,14 +104,14 @@ void main() {
     test('embed round trip verifies with HMAC', () async {
       final outcome = await embedWatermark(
         fileBytes: samplePng(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'sample.png',
         claimKey: alice,
       );
       expect(outcome.verified, isTrue);
       expect(outcome.resized, isFalse);
       expect(outcome.claimStatus, ClaimStatus.authenticated);
-      expect(outcome.recovered?.owner, 'Studio Nova');
+      expect(outcome.recovered?.owner, 'Creator');
       expect(outcome.recovered?.asset, 'sample.png\u00b7120x90');
       expect(outcome.recovered?.isAuthentic(alice), isTrue);
       expect(outcome.recovered?.isAuthentic(bob), isFalse);
@@ -170,14 +170,14 @@ void main() {
     test('embed round trip verifies with HMAC', () async {
       final outcome = await embedPdfFingerprint(
         source: samplePdf(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'doc.pdf',
         claimKey: alice,
       );
       expect(outcome.verified, isTrue);
       expect(outcome.structureMatch, isTrue);
       expect(outcome.claimStatus, ClaimStatus.authenticated);
-      expect(outcome.recovered?.owner, 'Studio Nova');
+      expect(outcome.recovered?.owner, 'Creator');
       expect(outcome.recovered?.structure.version, '1.4');
       expect(outcome.recovered?.structure.pages, 1);
     });
@@ -185,7 +185,7 @@ void main() {
     test('standalone verification of a delivered file passes', () async {
       final embedded = await embedPdfFingerprint(
         source: samplePdf(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'doc.pdf',
         claimKey: alice,
       );
@@ -201,7 +201,7 @@ void main() {
     test('redundant comment survives stripped trailing marker', () async {
       final embedded = await embedPdfFingerprint(
         source: samplePdf(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'doc.pdf',
         claimKey: alice,
       );
@@ -230,7 +230,7 @@ void main() {
     test('tampered identifier fails verification', () async {
       final embedded = await embedPdfFingerprint(
         source: samplePdf(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'doc.pdf',
         claimKey: alice,
       );
@@ -302,13 +302,13 @@ void main() {
     test('embed round trip verifies with HMAC', () async {
       final outcome = await embedAudioWatermark(
         fileBytes: sampleWav(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'clip.wav',
         claimKey: alice,
       );
       expect(outcome.verified, isTrue);
       expect(outcome.claimStatus, ClaimStatus.authenticated);
-      expect(outcome.recovered?.owner, 'Studio Nova');
+      expect(outcome.recovered?.owner, 'Creator');
       expect(outcome.recovered?.isAuthentic(alice), isTrue);
     });
 
@@ -349,21 +349,21 @@ void main() {
     test('embed round trip verifies with HMAC and uuid atom', () async {
       final outcome = await embedVideoFingerprint(
         source: sampleMp4(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'reel.mp4',
         claimKey: alice,
       );
       expect(outcome.verified, isTrue);
       expect(outcome.structureMatch, isTrue);
       expect(outcome.claimStatus, ClaimStatus.authenticated);
-      expect(outcome.recovered?.owner, 'Studio Nova');
+      expect(outcome.recovered?.owner, 'Creator');
       expect(extractVideoUuidPayload(outcome.markedBytes), isNotNull);
     });
 
     test('standalone verification of a delivered file passes', () async {
       final embedded = await embedVideoFingerprint(
         source: sampleMp4(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'reel.mp4',
         claimKey: alice,
       );
@@ -379,7 +379,7 @@ void main() {
     test('legacy trailer still extracts when uuid box is removed', () async {
       final embedded = await embedVideoFingerprint(
         source: sampleMp4(),
-        owner: 'Studio Nova',
+        owner: 'Creator',
         fileName: 'reel.mp4',
         claimKey: alice,
       );
@@ -405,7 +405,7 @@ void main() {
     ReportBody body() => const ReportBody(
           medium: 'image',
           subject: 'sample.png',
-          owner: 'Studio Nova',
+          owner: 'Creator',
           verified: true,
           issued: '2026-01-01T00:00:00Z',
           generated: '2026-01-02T00:00:00Z',

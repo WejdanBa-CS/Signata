@@ -40,7 +40,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   String get _defaultOwner =>
-      AuthService.instance.user?.displayName ?? 'Studio Nova';
+      AuthService.instance.user?.displayName?.trim() ?? '';
 
   Widget _toolScreen(EmTool tool) {
     switch (tool) {
