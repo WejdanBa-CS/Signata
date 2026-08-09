@@ -57,16 +57,16 @@ class ToolsHubScreen extends StatelessWidget {
         ),
         _ToolTile(
           tag: '05 / Internet',
-          title: 'Trace online',
+          title: 'Trace & social',
           desc:
-              'Scan public media URLs, watch links for reappearance, and match fingerprints to your published claims.',
-          icon: Icons.travel_explore,
+              'Fingerprint media for Instagram, TikTok, and X, scan post links, and watch the web for your claim.',
+          icon: Icons.radar,
           tone: EmColors.primary,
           onTap: () => onOpenTool(EmTool.trace),
         ),
         const SizedBox(height: 12),
         Text(
-          'Tip: protect a file, publish the claim, then Trace any URL where a copy might appear.',
+          'Tip: share a post or media from Instagram / TikTok / X into Signata, fingerprint it, then post the protected copy.',
           style: theme.textTheme.bodySmall
               ?.copyWith(color: EmColors.mutedForeground, height: 1.45),
         ),
