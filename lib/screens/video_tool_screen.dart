@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../core/claim_crypto.dart';
+import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
@@ -66,12 +68,14 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
     final stopwatch = Stopwatch()..start();
 
     try {
+      final claimKey = await AccountClaimKeys.current();
       if (_mode == VideoMode.embed) {
         setState(() => _workingStep = 'Profiling container structure');
         final outcome = await embedVideoFingerprint(
           source: bytes,
           owner: _ownerController.text,
           fileName: file.name,
+          claimKey: claimKey,
         );
         stopwatch.stop();
         if (!mounted) return;
@@ -85,13 +89,13 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           action: 'embed',
           subject: file.name,
           owner: outcome.payload.owner,
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.payload.identifier,
           at: DateTime.now(),
         ));
       } else {
         setState(() => _workingStep = 'Extracting & verifying');
-        final outcome = await verifyVideoFingerprint(bytes);
+        final outcome = await verifyVideoFingerprint(bytes, claimKey: claimKey);
         stopwatch.stop();
         if (!mounted) return;
         setState(() {
@@ -104,7 +108,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           action: 'verify',
           subject: file.name,
           owner: outcome.recovered?.owner ?? 'Unknown',
-          verified: outcome.verified,
+          verified: claimCountsAsVerified(outcome.claimStatus),
           reference: outcome.recovered?.identifier ?? '—',
           at: DateTime.now(),
         ));
@@ -138,7 +142,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
         medium: 'video',
         subject: outcome.recovered?.document ?? _fileName ?? 'video.mp4',
         owner: outcome.recovered?.owner ?? 'Unknown',
-        verified: outcome.verified,
+        verified: claimCountsAsVerified(outcome.claimStatus),
         issued: outcome.payload.issued,
         generated: DateTime.now().toUtc().toIso8601String(),
         evidence: {
@@ -267,7 +271,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
               ..._buildReport(),
               const SizedBox(height: 14),
               const Text(
-                'Prototype note: the identifier is carried in a trailing marker for illustration. Production will distribute ownership across sample tables and metadata boxes so it survives remuxing.',
+                'Prototype note: the identifier is carried in a uuid atom and signed with your account key for illustration. Production will distribute ownership across sample tables and metadata boxes so it survives remuxing.',
                 style: TextStyle(
                     fontSize: 11.5,
                     height: 1.5,
@@ -309,9 +313,9 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
     final recovered = _mode == VideoMode.embed
         ? _embedOutcome?.recovered
         : _verifyOutcome?.recovered;
-    final verified = _mode == VideoMode.embed
-        ? _embedOutcome?.verified
-        : _verifyOutcome?.verified;
+    final claimStatus = _mode == VideoMode.embed
+        ? _embedOutcome?.claimStatus
+        : _verifyOutcome?.claimStatus;
     final structureMatch = _mode == VideoMode.embed
         ? _embedOutcome?.structureMatch
         : _verifyOutcome?.structureMatch;
@@ -333,15 +337,16 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
       ];
     }
 
+    final banner = claimBanner(claimStatus ?? ClaimStatus.missing);
+    final payload = _mode == VideoMode.embed
+        ? _embedOutcome?.payload
+        : _verifyOutcome?.recovered;
+
     return [
       StatusBanner(
-        ok: verified ?? false,
-        title: (verified ?? false)
-            ? 'Video ownership verified'
-            : 'No valid fingerprint found',
-        subtitle: (verified ?? false)
-            ? 'Recovered identifier matches the recomputed structural digest.'
-            : 'The identifier could not be recovered or did not match the structure.',
+        ok: banner.ok,
+        title: banner.title,
+        subtitle: banner.subtitle,
       ),
       const SizedBox(height: 14),
       DetailList(rows: [
@@ -352,6 +357,10 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
         DetailRow(
             'Structure match',
             (structureMatch ?? false) ? 'identical' : 'mismatch',
+            mono: true),
+        DetailRow(
+            'Key id',
+            _kidLabel(payload?.alg ?? recovered?.alg, payload?.kid ?? recovered?.kid),
             mono: true),
         DetailRow('Round trip', '$_elapsedMs ms', mono: true),
       ]),
@@ -371,5 +380,11 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
       const SizedBox(height: 14),
       PayloadViewer(title: 'Extracted identifier payload', raw: raw),
     ];
+  }
+
+  static String _kidLabel(String? alg, String? kid) {
+    if (alg == null || alg.isEmpty || alg == claimAlgFnv16) return 'legacy';
+    if (kid != null && kid.isNotEmpty) return kid;
+    return 'legacy';
   }
 }
