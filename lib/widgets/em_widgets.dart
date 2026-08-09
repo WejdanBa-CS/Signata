@@ -139,24 +139,27 @@ class EmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: EmColors.card,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: borderColor),
-        boxShadow: glow
-            ? [
-                BoxShadow(
-                  color: EmColors.primary.withValues(alpha: 0.25),
-                  blurRadius: 40,
-                  spreadRadius: -8,
-                ),
-              ]
-            : null,
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: double.infinity,
+        padding: padding,
+        decoration: BoxDecoration(
+          color: EmColors.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: borderColor),
+          boxShadow: glow
+              ? [
+                  BoxShadow(
+                    color: EmColors.primary.withValues(alpha: 0.25),
+                    blurRadius: 40,
+                    spreadRadius: -8,
+                  ),
+                ]
+              : null,
+        ),
+        child: child,
       ),
-      child: child,
     );
   }
 }
