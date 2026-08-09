@@ -1,8 +1,8 @@
 /// PDF structural fingerprinting — Dart port of the website prototype.
 ///
-/// The identifier format uses a trailing Signata marker (`%%Signata:`
-/// trailing marker carrying base64 JSON), so documents fingerprinted in the
-/// app verify on the website and vice versa.
+/// Injects a comment claim before the last `%%EOF` and appends a trailing
+/// Signata marker. Payloads carry HMAC structural signatures when an account
+/// key is available.
 library;
 
 import 'dart:convert';
@@ -12,7 +12,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show compute;
 
+import 'claim_crypto.dart';
+
 const String pdfMark = '%%Signata:';
+const String pdfCommentMark = '% Signata-Claim: ';
 
 String _bytesToText(Uint8List bytes) => latin1.decode(bytes);
 
@@ -49,8 +52,6 @@ class PdfStructure {
   final bool linearized;
   final bool encrypted;
 
-  /// Key order matches the website's `JSON.stringify(structure)` so digests
-  /// computed on either side agree.
   Map<String, dynamic> toJson() => {
         'version': version,
         'bytes': bytes,
@@ -79,7 +80,6 @@ class PdfStructure {
   }
 }
 
-/// Derives a structural profile from the raw PDF text.
 PdfStructure analyzePdf(String text, int byteLength) {
   final head = text.substring(0, math.min(9, text.length));
   final version =
@@ -96,7 +96,6 @@ PdfStructure analyzePdf(String text, int byteLength) {
   );
 }
 
-/// SHA-256 hex digest (uppercase), byte-compatible with the website's digest.
 String pdfDigest(String input) =>
     crypto.sha256.convert(_textToBytes(input)).toString().toUpperCase();
 
@@ -106,22 +105,46 @@ class PdfPayload {
     required this.document,
     required this.issued,
     required this.structure,
-    required this.identifier,
+    required this.contentBytes,
+    this.signature,
+    this.alg,
+    this.kid,
+    this.version = 1,
+    this.identifier,
   });
 
   final String owner;
   final String document;
   final String issued;
   final PdfStructure structure;
-  final String identifier;
+  final int contentBytes;
+  final String? signature;
+  final String? alg;
+  final String? kid;
+  final int version;
 
-  Map<String, dynamic> toJson() => {
-        'owner': owner,
-        'document': document,
-        'issued': issued,
-        'structure': structure.toJson(),
-        'identifier': identifier,
-      };
+  /// Legacy structural digest (uppercase SHA-256 hex).
+  final String? identifier;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'owner': owner,
+      'document': document,
+      'issued': issued,
+      'structure': structure.toJson(),
+      'contentBytes': contentBytes,
+    };
+    if (signature != null && signature!.isNotEmpty) {
+      map['signature'] = signature;
+    }
+    if (alg != null && alg!.isNotEmpty) map['alg'] = alg;
+    if (kid != null && kid!.isNotEmpty) map['kid'] = kid;
+    if (version > 1) map['v'] = version;
+    if (identifier != null && identifier!.isNotEmpty) {
+      map['identifier'] = identifier;
+    }
+    return map;
+  }
 
   static PdfPayload? tryParse(String? raw) {
     if (raw == null) return null;
@@ -135,20 +158,64 @@ class PdfPayload {
         document: map['document'] as String? ?? '',
         issued: map['issued'] as String? ?? '',
         structure: structure,
-        identifier: map['identifier'] as String? ?? '',
+        contentBytes: (map['contentBytes'] as num?)?.toInt() ??
+            (map['originalLength'] as num?)?.toInt() ??
+            structure.bytes,
+        signature: map['signature'] as String?,
+        alg: map['alg'] as String?,
+        kid: map['kid'] as String?,
+        version: (map['v'] as num?)?.toInt() ?? 1,
+        identifier: map['identifier'] as String?,
       );
     } catch (_) {
       return null;
     }
   }
 
-  String digestInput(int originalTextLength) =>
-      '$owner|$document|$issued|${structure.canonical}|$originalTextLength';
+  String digestInput() =>
+      '$owner|$document|$issued|${structure.canonical}|$contentBytes';
+
+  String structuralIdentifier() => identifier ?? pdfDigest(digestInput());
+
+  ClaimStatus statusWith(ClaimKey? key, {
+    required String recheckId,
+    required bool structureMatch,
+  }) =>
+      ClaimCrypto.evaluateStructural(
+        owner: owner,
+        document: document,
+        issued: issued,
+        structureCanonical: structure.canonical,
+        originalLength: contentBytes,
+        identifier: structuralIdentifier(),
+        recheckId: recheckId,
+        structureMatch: structureMatch,
+        signature: signature,
+        alg: alg,
+        kid: kid,
+        key: key,
+      );
 }
 
-/// Appends the identifier after %%EOF — trailing bytes are ignored by readers.
+/// Injects a comment claim before the last `%%EOF`, then appends the trailing marker.
 Uint8List embedPdfIdentifier(Uint8List source, String payload) {
   final encoded = base64Encode(utf8.encode(payload));
+  final text = _bytesToText(source);
+  final eofIndex = text.lastIndexOf('%%EOF');
+  if (eofIndex >= 0) {
+    final comment = '$pdfCommentMark$encoded\n';
+    final commentBytes = _textToBytes(comment);
+    final before = source.sublist(0, eofIndex);
+    final after = source.sublist(eofIndex);
+    final withComment = Uint8List(
+      before.length + commentBytes.length + after.length,
+    );
+    withComment.setAll(0, before);
+    withComment.setAll(before.length, commentBytes);
+    withComment.setAll(before.length + commentBytes.length, after);
+    source = withComment;
+  }
+
   final tail = _textToBytes('\n$pdfMark$encoded\n%%EOF\n');
   final out = Uint8List(source.length + tail.length);
   out.setAll(0, source);
@@ -156,7 +223,7 @@ Uint8List embedPdfIdentifier(Uint8List source, String payload) {
   return out;
 }
 
-String? extractPdfIdentifier(String text) {
+String? _extractTrailingMarker(String text) {
   final index = text.lastIndexOf(pdfMark);
   if (index == -1) return null;
   final start = index + pdfMark.length;
@@ -169,7 +236,21 @@ String? extractPdfIdentifier(String text) {
   }
 }
 
-/* --------------------------- high-level ops --------------------------- */
+String? _extractCommentMarker(String text) {
+  final index = text.lastIndexOf(pdfCommentMark);
+  if (index == -1) return null;
+  final start = index + pdfCommentMark.length;
+  final end = text.indexOf('\n', start);
+  final encoded = text.substring(start, end == -1 ? text.length : end).trim();
+  try {
+    return utf8.decode(base64Decode(encoded));
+  } catch (_) {
+    return null;
+  }
+}
+
+String? extractPdfIdentifier(String text) =>
+    _extractTrailingMarker(text) ?? _extractCommentMarker(text);
 
 class PdfEmbedOutcome {
   const PdfEmbedOutcome({
@@ -180,6 +261,8 @@ class PdfEmbedOutcome {
     required this.recheckId,
     required this.structureMatch,
     required this.verified,
+    required this.claimStatus,
+    required this.originalLength,
   });
 
   final Uint8List markedBytes;
@@ -189,6 +272,8 @@ class PdfEmbedOutcome {
   final String recheckId;
   final bool structureMatch;
   final bool verified;
+  final ClaimStatus claimStatus;
+  final int originalLength;
 }
 
 class PdfVerifyOutcome {
@@ -198,6 +283,8 @@ class PdfVerifyOutcome {
     required this.recheckId,
     required this.structureMatch,
     required this.verified,
+    required this.claimStatus,
+    required this.originalLength,
   });
 
   final PdfPayload? recovered;
@@ -205,6 +292,8 @@ class PdfVerifyOutcome {
   final String recheckId;
   final bool structureMatch;
   final bool verified;
+  final ClaimStatus claimStatus;
+  final int originalLength;
 }
 
 class NotAPdfException implements Exception {
@@ -214,54 +303,162 @@ class NotAPdfException implements Exception {
   String toString() => 'That file is not a valid PDF document.';
 }
 
-PdfEmbedOutcome _pdfEmbedTask(
-    ({Uint8List source, String owner, String fileName, String issued}) args) {
-  final (:source, :owner, :fileName, :issued) = args;
-  final text = _bytesToText(source);
-  if (!text.startsWith('%PDF-')) throw const NotAPdfException();
+ClaimKey? _claimKeyFromArgs(Uint8List? keyBytes, String? kid) {
+  if (keyBytes == null || keyBytes.length != 32) return null;
+  return ClaimKey(bytes: keyBytes, kid: kid ?? ClaimKey.kidFor(keyBytes));
+}
 
-  final structure = analyzePdf(text, source.length);
+PdfPayload _buildPayload({
+  required String owner,
+  required String fileName,
+  required String issued,
+  required PdfStructure structure,
+  required int contentBytes,
+  ClaimKey? claimKey,
+}) {
   final resolvedOwner =
       owner.trim().isEmpty ? 'Anonymous creator' : owner.trim();
-
   final identifier = pdfDigest(
-    '$resolvedOwner|$fileName|$issued|${structure.canonical}|${text.length}',
+    '$resolvedOwner|$fileName|$issued|${structure.canonical}|$contentBytes',
   );
-  final payload = PdfPayload(
+
+  if (claimKey != null) {
+    final signed = ClaimCrypto.signStructural(
+      claimKey,
+      owner: resolvedOwner,
+      document: fileName,
+      issued: issued,
+      structureCanonical: structure.canonical,
+      originalLength: contentBytes,
+      identifier: identifier,
+    );
+    return PdfPayload(
+      owner: resolvedOwner,
+      document: fileName,
+      issued: issued,
+      structure: structure,
+      contentBytes: contentBytes,
+      signature: signed.signature,
+      alg: signed.alg,
+      kid: signed.kid,
+      version: signed.version,
+      identifier: identifier,
+    );
+  }
+
+  return PdfPayload(
     owner: resolvedOwner,
     document: fileName,
     issued: issued,
     structure: structure,
+    contentBytes: contentBytes,
     identifier: identifier,
+    version: 1,
+  );
+}
+
+({String recheckId, bool structureMatch, ClaimStatus claimStatus, bool verified})
+    _evaluatePayload(
+  PdfPayload payload,
+  Uint8List source,
+  ClaimKey? claimKey,
+) {
+  final originalLength = payload.contentBytes;
+  if (originalLength <= 0 || originalLength > source.length) {
+    return (
+      recheckId: '—',
+      structureMatch: false,
+      claimStatus: ClaimStatus.present,
+      verified: false,
+    );
+  }
+
+  final originalBytes = source.sublist(0, originalLength);
+  final originalText = _bytesToText(originalBytes);
+  final structure = analyzePdf(originalText, originalLength);
+  final recheckId = pdfDigest(payload.digestInput());
+  final structureMatch =
+      structure.canonical == payload.structure.canonical;
+  final claimStatus = payload.statusWith(
+    claimKey,
+    recheckId: recheckId,
+    structureMatch: structureMatch,
+  );
+  final verified = claimStatus == ClaimStatus.authenticated ||
+      claimStatus == ClaimStatus.selfConsistent;
+
+  return (
+    recheckId: recheckId,
+    structureMatch: structureMatch,
+    claimStatus: claimStatus,
+    verified: verified,
+  );
+}
+
+PdfEmbedOutcome _pdfEmbedTask(
+  ({
+    Uint8List source,
+    String owner,
+    String fileName,
+    String issued,
+    Uint8List? keyBytes,
+    String? kid,
+  }) args,
+) {
+  final (:source, :owner, :fileName, :issued, :keyBytes, :kid) = args;
+  final claimKey = _claimKeyFromArgs(keyBytes, kid);
+  final text = _bytesToText(source);
+  if (!text.startsWith('%PDF-')) throw const NotAPdfException();
+
+  final contentBytes = source.length;
+  final structure = analyzePdf(text, contentBytes);
+  final payload = _buildPayload(
+    owner: owner,
+    fileName: fileName,
+    issued: issued,
+    structure: structure,
+    contentBytes: contentBytes,
+    claimKey: claimKey,
   );
 
   final marked = embedPdfIdentifier(source, jsonEncode(payload.toJson()));
-
-  // Read back from the delivered file, exactly as a verifier would.
   final deliveredText = _bytesToText(marked);
   final raw = extractPdfIdentifier(deliveredText);
   final recovered = PdfPayload.tryParse(raw);
 
-  final recheckId =
-      recovered == null ? '—' : pdfDigest(recovered.digestInput(text.length));
-  final structureMatch =
-      recovered != null && recovered.structure.canonical == structure.canonical;
-  final verified = recovered != null &&
-      recheckId == recovered.identifier &&
-      structureMatch;
+  if (recovered == null) {
+    return PdfEmbedOutcome(
+      markedBytes: marked,
+      payload: payload,
+      recovered: null,
+      raw: raw,
+      recheckId: '—',
+      structureMatch: false,
+      verified: false,
+      claimStatus: ClaimStatus.missing,
+      originalLength: contentBytes,
+    );
+  }
 
+  final eval = _evaluatePayload(recovered, marked, claimKey);
   return PdfEmbedOutcome(
     markedBytes: marked,
     payload: payload,
     recovered: recovered,
     raw: raw,
-    recheckId: recheckId,
-    structureMatch: structureMatch,
-    verified: verified,
+    recheckId: eval.recheckId,
+    structureMatch: eval.structureMatch,
+    verified: eval.verified,
+    claimStatus: eval.claimStatus,
+    originalLength: contentBytes,
   );
 }
 
-PdfVerifyOutcome _pdfVerifyTask(Uint8List source) {
+PdfVerifyOutcome _pdfVerifyTask(
+  ({Uint8List source, Uint8List? keyBytes, String? kid}) args,
+) {
+  final (:source, :keyBytes, :kid) = args;
+  final claimKey = _claimKeyFromArgs(keyBytes, kid);
   final text = _bytesToText(source);
   if (!text.startsWith('%PDF-')) throw const NotAPdfException();
 
@@ -274,41 +471,52 @@ PdfVerifyOutcome _pdfVerifyTask(Uint8List source) {
       recheckId: '—',
       structureMatch: false,
       verified: false,
+      claimStatus: ClaimStatus.missing,
+      originalLength: 0,
     );
   }
 
-  // The marker tail starts with "\n%%Signata:", so everything before it is
-  // the original document as it existed when the identifier was derived.
-  final markIndex = text.lastIndexOf(pdfMark);
-  final originalLength = markIndex > 0 ? markIndex - 1 : text.length;
-  final originalText = text.substring(0, originalLength);
-
-  final structure = analyzePdf(originalText, originalLength);
-  final recheckId = pdfDigest(recovered.digestInput(originalLength));
-  final structureMatch = recovered.structure.canonical == structure.canonical;
-  final verified = recheckId == recovered.identifier && structureMatch;
-
+  final eval = _evaluatePayload(recovered, source, claimKey);
   return PdfVerifyOutcome(
     recovered: recovered,
     raw: raw,
-    recheckId: recheckId,
-    structureMatch: structureMatch,
-    verified: verified,
+    recheckId: eval.recheckId,
+    structureMatch: eval.structureMatch,
+    verified: eval.verified,
+    claimStatus: eval.claimStatus,
+    originalLength: recovered.contentBytes,
   );
 }
 
-/// Fingerprints [source] and round-trip verifies the delivered file.
 Future<PdfEmbedOutcome> embedPdfFingerprint({
   required Uint8List source,
   required String owner,
   required String fileName,
+  ClaimKey? claimKey,
 }) {
   final issued = DateTime.now().toUtc().toIso8601String();
-  return compute(_pdfEmbedTask,
-      (source: source, owner: owner, fileName: fileName, issued: issued));
+  return compute(
+    _pdfEmbedTask,
+    (
+      source: source,
+      owner: owner,
+      fileName: fileName,
+      issued: issued,
+      keyBytes: claimKey?.bytes,
+      kid: claimKey?.kid,
+    ),
+  );
 }
 
-/// Verifies a standalone PDF: recovers the identifier, recomputes the digest
-/// and structural profile from the document itself, and compares.
-Future<PdfVerifyOutcome> verifyPdfFingerprint(Uint8List source) =>
-    compute(_pdfVerifyTask, source);
+Future<PdfVerifyOutcome> verifyPdfFingerprint(
+  Uint8List source, {
+  ClaimKey? claimKey,
+}) =>
+    compute(
+      _pdfVerifyTask,
+      (
+        source: source,
+        keyBytes: claimKey?.bytes,
+        kid: claimKey?.kid,
+      ),
+    );

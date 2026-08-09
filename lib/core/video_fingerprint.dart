@@ -1,5 +1,5 @@
-/// Video container fingerprinting — profiles an MP4/MOV file and hides a
-/// trailing Signata identifier (same pattern as the PDF prototype).
+/// Video container fingerprinting — profiles an MP4/MOV file and embeds a
+/// Signata claim in a custom `uuid` box plus a legacy trailing marker.
 library;
 
 import 'dart:convert';
@@ -8,9 +8,14 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart' show compute;
 
-const String videoMark = '%%SignataVideo:';
+import 'claim_crypto.dart';
 
-String _bytesToLatin1(Uint8List bytes) => latin1.decode(bytes, allowInvalid: true);
+const String videoMark = '%%SignataVideo:';
+final Uint8List signataVideoUuid =
+    Uint8List.fromList(ascii.encode('SignataClaimV2!!'));
+
+String _bytesToLatin1(Uint8List bytes) =>
+    latin1.decode(bytes, allowInvalid: true);
 
 Uint8List _latin1ToBytes(String text) {
   final out = Uint8List(text.length);
@@ -71,22 +76,46 @@ class VideoPayload {
     required this.document,
     required this.issued,
     required this.structure,
-    required this.identifier,
+    required this.contentBytes,
+    this.signature,
+    this.alg,
+    this.kid,
+    this.version = 1,
+    this.identifier,
   });
 
   final String owner;
   final String document;
   final String issued;
   final VideoStructure structure;
-  final String identifier;
+  final int contentBytes;
+  final String? signature;
+  final String? alg;
+  final String? kid;
+  final int version;
 
-  Map<String, dynamic> toJson() => {
-        'owner': owner,
-        'document': document,
-        'issued': issued,
-        'structure': structure.toJson(),
-        'identifier': identifier,
-      };
+  /// Legacy structural digest (uppercase SHA-256 hex).
+  final String? identifier;
+
+  Map<String, dynamic> toJson() {
+    final map = <String, dynamic>{
+      'owner': owner,
+      'document': document,
+      'issued': issued,
+      'structure': structure.toJson(),
+      'contentBytes': contentBytes,
+    };
+    if (signature != null && signature!.isNotEmpty) {
+      map['signature'] = signature;
+    }
+    if (alg != null && alg!.isNotEmpty) map['alg'] = alg;
+    if (kid != null && kid!.isNotEmpty) map['kid'] = kid;
+    if (version > 1) map['v'] = version;
+    if (identifier != null && identifier!.isNotEmpty) {
+      map['identifier'] = identifier;
+    }
+    return map;
+  }
 
   static VideoPayload? tryParse(String? raw) {
     if (raw == null) return null;
@@ -100,15 +129,43 @@ class VideoPayload {
         document: map['document'] as String? ?? '',
         issued: map['issued'] as String? ?? '',
         structure: structure,
-        identifier: map['identifier'] as String? ?? '',
+        contentBytes: (map['contentBytes'] as num?)?.toInt() ??
+            (map['originalLength'] as num?)?.toInt() ??
+            structure.bytes,
+        signature: map['signature'] as String?,
+        alg: map['alg'] as String?,
+        kid: map['kid'] as String?,
+        version: (map['v'] as num?)?.toInt() ?? 1,
+        identifier: map['identifier'] as String?,
       );
     } catch (_) {
       return null;
     }
   }
 
-  String digestInput(int originalLength) =>
-      '$owner|$document|$issued|${structure.canonical}|$originalLength';
+  String digestInput() =>
+      '$owner|$document|$issued|${structure.canonical}|$contentBytes';
+
+  String structuralIdentifier() => identifier ?? videoDigest(digestInput());
+
+  ClaimStatus statusWith(ClaimKey? key, {
+    required String recheckId,
+    required bool structureMatch,
+  }) =>
+      ClaimCrypto.evaluateStructural(
+        owner: owner,
+        document: document,
+        issued: issued,
+        structureCanonical: structure.canonical,
+        originalLength: contentBytes,
+        identifier: structuralIdentifier(),
+        recheckId: recheckId,
+        structureMatch: structureMatch,
+        signature: signature,
+        alg: alg,
+        kid: kid,
+        key: key,
+      );
 }
 
 class NotAVideoException implements Exception {
@@ -125,7 +182,6 @@ String videoDigest(String input) =>
 VideoStructure analyzeVideo(Uint8List bytes) {
   if (bytes.length < 12) throw const NotAVideoException();
 
-  // ISO BMFF: [size:4][type:4]…  ftyp usually first.
   final firstType = String.fromCharCodes(bytes.sublist(4, 8));
   if (firstType != 'ftyp' && firstType != 'wide' && firstType != 'mdat') {
     // Some files start with a free/skip atom; still accept if we later find moov.
@@ -154,7 +210,6 @@ VideoStructure analyzeVideo(Uint8List bytes) {
       hasMdat = true;
     }
 
-    // Sample descriptions / handler hints inside this atom window.
     final end = size == 0
         ? bytes.length
         : (size == 1 && offset + 16 <= bytes.length)
@@ -164,10 +219,14 @@ VideoStructure analyzeVideo(Uint8List bytes) {
             : offset + size;
     final windowEnd = end.clamp(0, bytes.length);
     final slice = _bytesToLatin1(bytes.sublist(offset, windowEnd));
-    if (slice.contains('vide') || slice.contains('avc1') || slice.contains('hvc1')) {
+    if (slice.contains('vide') ||
+        slice.contains('avc1') ||
+        slice.contains('hvc1')) {
       hasVideo = true;
     }
-    if (slice.contains('soun') || slice.contains('mp4a') || slice.contains('opus')) {
+    if (slice.contains('soun') ||
+        slice.contains('mp4a') ||
+        slice.contains('opus')) {
       hasAudio = true;
     }
 
@@ -190,16 +249,76 @@ VideoStructure analyzeVideo(Uint8List bytes) {
   );
 }
 
+Uint8List _buildUuidBox(Uint8List payloadBytes) {
+  final boxSize = 8 + 16 + payloadBytes.length;
+  final box = Uint8List(boxSize);
+  final header = ByteData(8);
+  header.setUint32(0, boxSize, Endian.big);
+  box.setAll(0, header.buffer.asUint8List());
+  box.setAll(4, 'uuid'.codeUnits);
+  box.setAll(8, signataVideoUuid);
+  box.setAll(24, payloadBytes);
+  return box;
+}
+
 Uint8List embedVideoIdentifier(Uint8List source, String payload) {
+  final payloadBytes = utf8.encode(payload);
+  final uuidBox = _buildUuidBox(payloadBytes);
   final encoded = base64Encode(utf8.encode(payload));
   final tail = _latin1ToBytes('\n$videoMark$encoded\n');
-  final out = Uint8List(source.length + tail.length);
+  final out = Uint8List(source.length + uuidBox.length + tail.length);
   out.setAll(0, source);
-  out.setAll(source.length, tail);
+  out.setAll(source.length, uuidBox);
+  out.setAll(source.length + uuidBox.length, tail);
   return out;
 }
 
-String? extractVideoIdentifier(String text) {
+String? extractVideoUuidPayload(Uint8List bytes) {
+  var offset = 0;
+  while (offset + 8 <= bytes.length) {
+    final size = ByteData.sublistView(bytes, offset, offset + 4)
+        .getUint32(0, Endian.big);
+    final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
+    if (size < 24 && size != 1) break;
+
+    final end = size == 0
+        ? bytes.length
+        : (size == 1 && offset + 16 <= bytes.length)
+            ? offset +
+                ByteData.sublistView(bytes, offset + 8, offset + 16)
+                    .getUint64(0, Endian.big)
+            : offset + size;
+    final windowEnd = end.clamp(0, bytes.length);
+
+    if (type == 'uuid' && offset + 24 <= windowEnd) {
+      final userType = bytes.sublist(offset + 8, offset + 24);
+      if (userType.length == signataVideoUuid.length) {
+        var matches = true;
+        for (var i = 0; i < signataVideoUuid.length; i++) {
+          if (userType[i] != signataVideoUuid[i]) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches && windowEnd > offset + 24) {
+          try {
+            return utf8.decode(bytes.sublist(offset + 24, windowEnd));
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (size == 0) break;
+    offset = windowEnd;
+  }
+  return null;
+}
+
+String? extractVideoPayloadRaw(Uint8List bytes) {
+  final uuidPayload = extractVideoUuidPayload(bytes);
+  if (uuidPayload != null) return uuidPayload;
+
+  final text = _bytesToLatin1(bytes);
   final index = text.lastIndexOf(videoMark);
   if (index == -1) return null;
   final start = index + videoMark.length;
@@ -221,6 +340,8 @@ class VideoEmbedOutcome {
     required this.recheckId,
     required this.structureMatch,
     required this.verified,
+    required this.claimStatus,
+    required this.originalLength,
   });
 
   final Uint8List markedBytes;
@@ -230,6 +351,8 @@ class VideoEmbedOutcome {
   final String recheckId;
   final bool structureMatch;
   final bool verified;
+  final ClaimStatus claimStatus;
+  final int originalLength;
 }
 
 class VideoVerifyOutcome {
@@ -239,6 +362,8 @@ class VideoVerifyOutcome {
     required this.recheckId,
     required this.structureMatch,
     required this.verified,
+    required this.claimStatus,
+    required this.originalLength,
   });
 
   final VideoPayload? recovered;
@@ -246,77 +371,184 @@ class VideoVerifyOutcome {
   final String recheckId;
   final bool structureMatch;
   final bool verified;
+  final ClaimStatus claimStatus;
+  final int originalLength;
 }
 
-VideoEmbedOutcome _embedTask(
-    ({Uint8List source, String owner, String fileName, String issued}) args) {
-  final (:source, :owner, :fileName, :issued) = args;
-  final structure = analyzeVideo(source);
+ClaimKey? _claimKeyFromArgs(Uint8List? keyBytes, String? kid) {
+  if (keyBytes == null || keyBytes.length != 32) return null;
+  return ClaimKey(bytes: keyBytes, kid: kid ?? ClaimKey.kidFor(keyBytes));
+}
+
+VideoPayload _buildPayload({
+  required String owner,
+  required String fileName,
+  required String issued,
+  required VideoStructure structure,
+  required int contentBytes,
+  ClaimKey? claimKey,
+}) {
   final resolvedOwner =
       owner.trim().isEmpty ? 'Anonymous creator' : owner.trim();
   final identifier = videoDigest(
-    '$resolvedOwner|$fileName|$issued|${structure.canonical}|${source.length}',
+    '$resolvedOwner|$fileName|$issued|${structure.canonical}|$contentBytes',
   );
-  final payload = VideoPayload(
+
+  if (claimKey != null) {
+    final signed = ClaimCrypto.signStructural(
+      claimKey,
+      owner: resolvedOwner,
+      document: fileName,
+      issued: issued,
+      structureCanonical: structure.canonical,
+      originalLength: contentBytes,
+      identifier: identifier,
+    );
+    return VideoPayload(
+      owner: resolvedOwner,
+      document: fileName,
+      issued: issued,
+      structure: structure,
+      contentBytes: contentBytes,
+      signature: signed.signature,
+      alg: signed.alg,
+      kid: signed.kid,
+      version: signed.version,
+      identifier: identifier,
+    );
+  }
+
+  return VideoPayload(
     owner: resolvedOwner,
     document: fileName,
     issued: issued,
     structure: structure,
+    contentBytes: contentBytes,
     identifier: identifier,
+    version: 1,
+  );
+}
+
+({String recheckId, bool structureMatch, ClaimStatus claimStatus, bool verified})
+    _evaluatePayload(
+  VideoPayload payload,
+  Uint8List source,
+  ClaimKey? claimKey,
+) {
+  final originalLength = payload.contentBytes;
+  if (originalLength <= 0 || originalLength > source.length) {
+    return (
+      recheckId: '—',
+      structureMatch: false,
+      claimStatus: ClaimStatus.present,
+      verified: false,
+    );
+  }
+
+  final original = source.sublist(0, originalLength);
+  final structure = analyzeVideo(original);
+  final recheckId = videoDigest(payload.digestInput());
+  final structureMatch = structure.canonical == payload.structure.canonical;
+  final claimStatus = payload.statusWith(
+    claimKey,
+    recheckId: recheckId,
+    structureMatch: structureMatch,
+  );
+  final verified = claimStatus == ClaimStatus.authenticated ||
+      claimStatus == ClaimStatus.selfConsistent;
+
+  return (
+    recheckId: recheckId,
+    structureMatch: structureMatch,
+    claimStatus: claimStatus,
+    verified: verified,
+  );
+}
+
+VideoEmbedOutcome _embedTask(
+  ({
+    Uint8List source,
+    String owner,
+    String fileName,
+    String issued,
+    Uint8List? keyBytes,
+    String? kid,
+  }) args,
+) {
+  final (:source, :owner, :fileName, :issued, :keyBytes, :kid) = args;
+  final claimKey = _claimKeyFromArgs(keyBytes, kid);
+  final contentBytes = source.length;
+  final structure = analyzeVideo(source);
+  final payload = _buildPayload(
+    owner: owner,
+    fileName: fileName,
+    issued: issued,
+    structure: structure,
+    contentBytes: contentBytes,
+    claimKey: claimKey,
   );
 
-  final marked = embedVideoIdentifier(source, jsonEncode(payload.toJson()));
-  final deliveredText = _bytesToLatin1(marked);
-  final raw = extractVideoIdentifier(deliveredText);
+  final marked =
+      embedVideoIdentifier(source, jsonEncode(payload.toJson()));
+  final raw = extractVideoPayloadRaw(marked);
   final recovered = VideoPayload.tryParse(raw);
-  final recheckId = recovered == null
-      ? '—'
-      : videoDigest(recovered.digestInput(source.length));
-  final structureMatch =
-      recovered != null && recovered.structure.canonical == structure.canonical;
-  final verified = recovered != null &&
-      recheckId == recovered.identifier &&
-      structureMatch;
 
+  if (recovered == null) {
+    return VideoEmbedOutcome(
+      markedBytes: marked,
+      payload: payload,
+      recovered: null,
+      raw: raw,
+      recheckId: '—',
+      structureMatch: false,
+      verified: false,
+      claimStatus: ClaimStatus.missing,
+      originalLength: contentBytes,
+    );
+  }
+
+  final eval = _evaluatePayload(recovered, marked, claimKey);
   return VideoEmbedOutcome(
     markedBytes: marked,
     payload: payload,
     recovered: recovered,
     raw: raw,
-    recheckId: recheckId,
-    structureMatch: structureMatch,
-    verified: verified,
+    recheckId: eval.recheckId,
+    structureMatch: eval.structureMatch,
+    verified: eval.verified,
+    claimStatus: eval.claimStatus,
+    originalLength: contentBytes,
   );
 }
 
-VideoVerifyOutcome _verifyTask(Uint8List source) {
-  final text = _bytesToLatin1(source);
-  final raw = extractVideoIdentifier(text);
+VideoVerifyOutcome _verifyTask(
+  ({Uint8List source, Uint8List? keyBytes, String? kid}) args,
+) {
+  final (:source, :keyBytes, :kid) = args;
+  final claimKey = _claimKeyFromArgs(keyBytes, kid);
+  final raw = extractVideoPayloadRaw(source);
   final recovered = VideoPayload.tryParse(raw);
   if (recovered == null) {
-    return const VideoVerifyOutcome(
+    return VideoVerifyOutcome(
       recovered: null,
-      raw: null,
+      raw: raw,
       recheckId: '—',
       structureMatch: false,
       verified: false,
+      claimStatus: ClaimStatus.missing,
+      originalLength: 0,
     );
   }
 
-  final markIndex = text.lastIndexOf(videoMark);
-  final originalLength = markIndex > 0 ? markIndex - 1 : source.length;
-  final original = source.sublist(0, originalLength);
-  final structure = analyzeVideo(original);
-  final recheckId = videoDigest(recovered.digestInput(originalLength));
-  final structureMatch = recovered.structure.canonical == structure.canonical;
-  final verified = recheckId == recovered.identifier && structureMatch;
-
+  final eval = _evaluatePayload(recovered, source, claimKey);
   return VideoVerifyOutcome(
     recovered: recovered,
     raw: raw,
-    recheckId: recheckId,
-    structureMatch: structureMatch,
-    verified: verified,
+    recheckId: eval.recheckId,
+    structureMatch: eval.structureMatch,
+    verified: eval.verified,
+    claimStatus: eval.claimStatus,
+    originalLength: recovered.contentBytes,
   );
 }
 
@@ -324,11 +556,31 @@ Future<VideoEmbedOutcome> embedVideoFingerprint({
   required Uint8List source,
   required String owner,
   required String fileName,
+  ClaimKey? claimKey,
 }) {
   final issued = DateTime.now().toUtc().toIso8601String();
-  return compute(_embedTask,
-      (source: source, owner: owner, fileName: fileName, issued: issued));
+  return compute(
+    _embedTask,
+    (
+      source: source,
+      owner: owner,
+      fileName: fileName,
+      issued: issued,
+      keyBytes: claimKey?.bytes,
+      kid: claimKey?.kid,
+    ),
+  );
 }
 
-Future<VideoVerifyOutcome> verifyVideoFingerprint(Uint8List source) =>
-    compute(_verifyTask, source);
+Future<VideoVerifyOutcome> verifyVideoFingerprint(
+  Uint8List source, {
+  ClaimKey? claimKey,
+}) =>
+    compute(
+      _verifyTask,
+      (
+        source: source,
+        keyBytes: claimKey?.bytes,
+        kid: claimKey?.kid,
+      ),
+    );
