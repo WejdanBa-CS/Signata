@@ -158,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 textInputAction: TextInputAction.next,
                                 decoration: const InputDecoration(
                                   labelText: 'Display name',
-                                  hintText: 'Studio Nova',
+                                  hintText: 'Your name',
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -170,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               autocorrect: false,
                               decoration: const InputDecoration(
                                 labelText: 'Email',
-                                hintText: 'you@studio.com',
+                                hintText: 'you@example.com',
                               ),
                             ),
                             const SizedBox(height: 12),
