@@ -80,7 +80,7 @@ class AccountScreen extends StatelessWidget {
               const MonoLabel('Session'),
               const SizedBox(height: 10),
               const Text(
-                'Your session stays on this device. Sign out anytime — watermarked files are not affected.',
+                'Your session is stored in on-device secure storage. Sign out anytime — watermarked files are not affected.',
                 style: TextStyle(
                     fontSize: 13,
                     height: 1.45,
