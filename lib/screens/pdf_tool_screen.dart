@@ -93,7 +93,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
           subject: file.name,
           owner: outcome.payload.owner,
           verified: claimCountsAsVerified(outcome.claimStatus),
-          reference: outcome.payload.identifier,
+          reference: outcome.payload.structuralIdentifier(),
           at: DateTime.now(),
         ));
       } else {
