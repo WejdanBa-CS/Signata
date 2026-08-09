@@ -13,14 +13,17 @@ import '../widgets/em_widgets.dart';
 enum PdfMode { embed, verify }
 
 class PdfToolScreen extends StatefulWidget {
-  const PdfToolScreen({super.key});
+  const PdfToolScreen({super.key, this.defaultOwner = 'Studio Nova'});
+
+  final String defaultOwner;
 
   @override
   State<PdfToolScreen> createState() => _PdfToolScreenState();
 }
 
 class _PdfToolScreenState extends State<PdfToolScreen> {
-  final _ownerController = TextEditingController(text: 'Studio Nova');
+  late final _ownerController =
+      TextEditingController(text: widget.defaultOwner);
 
   PdfMode _mode = PdfMode.embed;
   String? _workingStep;
@@ -54,11 +57,10 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
-      withData: true,
     );
     final file = picked?.files.firstOrNull;
-    final bytes = file?.bytes;
-    if (file == null || bytes == null) return;
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
 
     _reset();
     setState(() => _fileName = file.name);

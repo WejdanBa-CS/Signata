@@ -129,9 +129,12 @@ class HistoryScreenState extends State<HistoryScreen> {
                       borderRadius: BorderRadius.circular(11),
                     ),
                     child: Icon(
-                      entry.medium == 'image'
-                          ? Icons.image_outlined
-                          : Icons.description_outlined,
+                      switch (entry.medium) {
+                        'image' => Icons.image_outlined,
+                        'audio' => Icons.graphic_eq,
+                        'video' => Icons.movie_outlined,
+                        _ => Icons.description_outlined,
+                      },
                       size: 19,
                       color: entry.verified
                           ? EmColors.accent
