@@ -203,10 +203,19 @@ class AuthService extends ChangeNotifier {
   bool get isSignedIn => _user != null;
   bool get isReady => _ready;
 
+  bool get isGoogleConfigured => GoogleAuthConfig.hasServerClientId;
+
   Future<void> initialize() async {
+    await GoogleAuthConfig.load();
+    await _initGoogleSignIn();
+    await _restoreSession();
+    _ready = true;
+    notifyListeners();
+  }
+
+  Future<void> _initGoogleSignIn() async {
     try {
       // Android requires the *Web* OAuth client ID as serverClientId.
-      // Create it in Google Cloud Console → APIs & Services → Credentials.
       await _google.initialize(
         clientId: GoogleAuthConfig.clientId.isEmpty
             ? null
@@ -218,18 +227,26 @@ class AuthService extends ChangeNotifier {
       _googleReady = GoogleAuthConfig.hasServerClientId;
       if (!_googleReady) {
         debugPrint(
-          'Google Sign-In: set GOOGLE_SERVER_CLIENT_ID (Web client ID) '
-          'via --dart-define or lib/core/google_auth_config.dart',
+          'Google Sign-In: missing Web client ID. '
+          'Paste it on the login screen, or set GOOGLE_SERVER_CLIENT_ID.',
         );
       }
     } catch (error) {
       debugPrint('Google Sign-In init skipped: $error');
       _googleReady = false;
     }
+  }
 
-    await _restoreSession();
-    _ready = true;
+  /// Saves a Google Web client ID and re-initializes the SDK.
+  Future<void> configureGoogleServerClientId(String clientId) async {
+    await GoogleAuthConfig.saveServerClientId(clientId);
+    await _initGoogleSignIn();
     notifyListeners();
+    if (!_googleReady) {
+      throw const AuthException(
+        'Google Sign-In still failed to initialize. Check the Web client ID.',
+      );
+    }
   }
 
   Future<void> signInWithEmail({
@@ -344,11 +361,13 @@ class AuthService extends ChangeNotifier {
   Future<void> signInWithGoogle() async {
     if (!GoogleAuthConfig.hasServerClientId) {
       throw const AuthException(
-        'Google Client IDs are missing. Add your Web OAuth client ID as '
-        'GOOGLE_SERVER_CLIENT_ID (see lib/core/google_auth_config.dart), '
-        'and register an Android OAuth client with package '
-        'app.signata.signata + your SHA-1.',
+        'Google setup needed. Tap “Set up Google Sign-In”, paste your Web '
+        'client ID, and make sure an Android OAuth client exists for '
+        'package app.signata.signata.',
       );
+    }
+    if (!_googleReady) {
+      await _initGoogleSignIn();
     }
     if (!_googleReady) {
       throw const AuthException(

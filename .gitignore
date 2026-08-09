@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local Google OAuth secrets (use google_oauth.example.env as a template)
+google_oauth.env

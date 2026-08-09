@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/auth.dart';
+import '../core/google_auth_config.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 
@@ -67,6 +69,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitGoogle() async {
+    if (!AuthService.instance.isGoogleConfigured) {
+      final configured = await _showGoogleSetupDialog();
+      if (!configured) return;
+    }
+
     setState(() {
       _busy = true;
       _error = null;
@@ -76,15 +83,146 @@ class _LoginScreenState extends State<LoginScreen> {
       _clearSecrets();
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      final message = error.toString().replaceFirst('Exception: ', '');
+      setState(() => _error = message);
+      if (message.toLowerCase().contains('client') ||
+          message.toLowerCase().contains('setup') ||
+          message.toLowerCase().contains('oauth')) {
+        await _showGoogleSetupDialog();
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  Future<bool> _showGoogleSetupDialog() async {
+    final controller = TextEditingController(
+      text: GoogleAuthConfig.serverClientId,
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: EmColors.card,
+          title: const Text('Set up Google Sign-In'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Create two OAuth clients in Google Cloud, then paste the Web client ID here.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: EmColors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  '1. Open Credentials → Create OAuth client',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '• Web application → copy its Client ID\n'
+                  '• Android → package + SHA-1 below (no need to paste that ID)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: EmColors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  'Package: ${GoogleAuthConfig.androidPackageName}\n'
+                  'SHA-1: ${GoogleAuthConfig.androidDebugSha1}',
+                  style: emMono(size: 11),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(
+                          text: GoogleAuthConfig.androidDebugSha1,
+                        ));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('SHA-1 copied')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('Copy SHA-1'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final uri = Uri.parse(
+                          'https://console.cloud.google.com/apis/credentials',
+                        );
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      },
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('Open Cloud Console'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Web client ID',
+                    hintText: '123-abc.apps.googleusercontent.com',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await AuthService.instance
+                      .configureGoogleServerClientId(controller.text);
+                  if (!context.mounted) return;
+                  Navigator.pop(context, true);
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        error.toString().replaceFirst('Exception: ', ''),
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save & continue'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return saved == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final googleReady = AuthService.instance.isGoogleConfigured;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -146,11 +284,28 @@ class _LoginScreenState extends State<LoginScreen> {
                               OutlinedButton.icon(
                                 onPressed: _busy ? null : _submitGoogle,
                                 icon: const Icon(Icons.g_mobiledata, size: 28),
-                                label: const Text('Continue with Google'),
+                                label: Text(
+                                  googleReady
+                                      ? 'Continue with Google'
+                                      : 'Continue with Google (setup)',
+                                ),
                                 style: OutlinedButton.styleFrom(
                                   minimumSize: const Size.fromHeight(50),
                                 ),
                               ),
+                              if (!googleReady) ...[
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () async {
+                                          final ok =
+                                              await _showGoogleSetupDialog();
+                                          if (ok && mounted) setState(() {});
+                                        },
+                                  child: const Text('Set up Google Sign-In'),
+                                ),
+                              ],
                               const SizedBox(height: 18),
                               Row(
                                 children: [
@@ -297,7 +452,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Email passwords are hashed with PBKDF2 and kept in on-device secure storage. Google uses your Google account when OAuth is configured.',
+                          googleReady
+                              ? 'Email passwords stay in on-device secure storage. Google uses your Google account.'
+                              : 'Google Sign-In needs a one-time OAuth setup (Web + Android clients). Email login works without it.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: EmColors.mutedForeground,
