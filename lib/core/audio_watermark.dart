@@ -72,8 +72,8 @@ class AudioPayload {
     return signature == legacy.signature;
   }
 
-  bool get isAuthentic =>
-      statusWith(null) == ClaimStatus.authenticated;
+  bool isAuthentic(ClaimKey? key) =>
+      statusWith(key) == ClaimStatus.authenticated;
 
   ClaimStatus statusWith(ClaimKey? key) => ClaimCrypto.evaluateMedia(
         owner: owner,

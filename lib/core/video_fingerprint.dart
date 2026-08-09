@@ -314,11 +314,7 @@ String? extractVideoUuidPayload(Uint8List bytes) {
   return null;
 }
 
-String? extractVideoPayloadRaw(Uint8List bytes) {
-  final uuidPayload = extractVideoUuidPayload(bytes);
-  if (uuidPayload != null) return uuidPayload;
-
-  final text = _bytesToLatin1(bytes);
+String? extractVideoIdentifier(String text) {
   final index = text.lastIndexOf(videoMark);
   if (index == -1) return null;
   final start = index + videoMark.length;
@@ -329,6 +325,12 @@ String? extractVideoPayloadRaw(Uint8List bytes) {
   } catch (_) {
     return null;
   }
+}
+
+String? extractVideoPayloadRaw(Uint8List bytes) {
+  final uuidPayload = extractVideoUuidPayload(bytes);
+  if (uuidPayload != null) return uuidPayload;
+  return extractVideoIdentifier(_bytesToLatin1(bytes));
 }
 
 class VideoEmbedOutcome {
