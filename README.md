@@ -7,7 +7,8 @@ Native Flutter app for digital watermarking — images, audio, video, and PDFs �
 ## What's included
 
 - **Home** — full landing story (features, how it works, architecture, roadmap)
-- **Tools hub** — Image, Audio, Video, and PDF protect/verify flows
+- **Tools hub** — Image, Audio, Video, PDF protect/verify, plus **Trace online**
+- **Internet tracing** — scan public media URLs for Signata fingerprints, watchlist re-scans, publish claims for catalog matching
 - **Auth** — email accounts + Google Sign-In gate
 - **History** — local on-device record of every embed/verify run
 - Sealed JSON verification reports (shareable)
@@ -18,6 +19,14 @@ Native Flutter app for digital watermarking — images, audio, video, and PDFs �
 flutter pub get
 flutter run
 ```
+
+Optional remote claim registry (so other devices can look up fingerprints):
+
+```sh
+flutter run --dart-define=SIGNATA_REGISTRY_URL=https://your-registry.example
+```
+
+See [`tool/registry_server.example.md`](tool/registry_server.example.md) for the expected HTTP API. Without it, tracing still works by reading fingerprints from downloaded files and matching your on-device published claims.
 
 ## Test
 

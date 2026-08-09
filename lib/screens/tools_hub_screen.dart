@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 
-enum EmTool { image, audio, video, pdf }
+enum EmTool { image, audio, video, pdf, trace }
 
 class ToolsHubScreen extends StatelessWidget {
   const ToolsHubScreen({super.key, required this.onOpenTool});
@@ -20,7 +20,7 @@ class ToolsHubScreen extends StatelessWidget {
           tag: 'Workspace',
           title: 'Protect & verify',
           desc:
-              'Choose a medium. Everything is processed on your device — nothing leaves the phone.',
+              'Protect files on-device, then trace public URLs across the internet for Signata fingerprints.',
         ),
         const SizedBox(height: 20),
         _ToolTile(
@@ -55,9 +55,18 @@ class ToolsHubScreen extends StatelessWidget {
           tone: EmColors.accent,
           onTap: () => onOpenTool(EmTool.pdf),
         ),
+        _ToolTile(
+          tag: '05 / Internet',
+          title: 'Trace online',
+          desc:
+              'Scan public media URLs, watch links for reappearance, and match fingerprints to your published claims.',
+          icon: Icons.travel_explore,
+          tone: EmColors.primary,
+          onTap: () => onOpenTool(EmTool.trace),
+        ),
         const SizedBox(height: 12),
         Text(
-          'Tip: after protecting a file, switch to Verify mode to check any copy.',
+          'Tip: protect a file, publish the claim, then Trace any URL where a copy might appear.',
           style: theme.textTheme.bodySmall
               ?.copyWith(color: EmColors.mutedForeground, height: 1.45),
         ),
