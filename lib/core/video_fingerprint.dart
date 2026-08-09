@@ -279,7 +279,8 @@ String? extractVideoUuidPayload(Uint8List bytes) {
     final size = ByteData.sublistView(bytes, offset, offset + 4)
         .getUint32(0, Endian.big);
     final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
-    if (size < 24 && size != 1) break;
+    // Top-level boxes only need an 8-byte header; uuid payload needs 24+.
+    if (size != 0 && size != 1 && size < 8) break;
 
     final end = size == 0
         ? bytes.length
@@ -288,7 +289,8 @@ String? extractVideoUuidPayload(Uint8List bytes) {
                 ByteData.sublistView(bytes, offset + 8, offset + 16)
                     .getUint64(0, Endian.big)
             : offset + size;
-    final windowEnd = end.clamp(0, bytes.length);
+    if (end <= offset || end > bytes.length) break;
+    final windowEnd = end;
 
     if (type == 'uuid' && offset + 24 <= windowEnd) {
       final userType = bytes.sublist(offset + 8, offset + 24);
