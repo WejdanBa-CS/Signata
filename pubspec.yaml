@@ -1,5 +1,5 @@
 name: echomark
-description: "EchoMark — invisible ownership, verifiable authenticity. Digital watermarking for images and PDFs."
+description: "EchoMark — invisible ownership, verifiable authenticity. Digital watermarking for images, audio, video, and PDFs."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -14,11 +14,13 @@ dependencies:
   cupertino_icons: ^1.0.8
   image: ^4.9.1
   crypto: ^3.0.7
-  file_picker: 11.0.3
-  share_plus: 12.0.1
+  file_picker: 12.0.0-beta.7
+  share_plus: 13.0.0
   path_provider: ^2.1.6
   google_fonts: ^8.2.1
   shared_preferences: ^2.5.5
+  google_sign_in: ^7.2.0
+  flutter_secure_storage: ^11.0.0
 
 dev_dependencies:
   flutter_test:
@@ -30,8 +32,11 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon.png"
+  image_path: "assets/icon_padded.png"
+  adaptive_icon_foreground: "assets/icon_foreground.png"
+  adaptive_icon_background: "#030C14"
   remove_alpha_ios: true
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true

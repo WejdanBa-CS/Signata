@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import 'tools_hub_screen.dart';
 
 class _Feature {
   const _Feature(this.tag, this.title, this.desc, this.points, this.icon);
@@ -38,7 +39,18 @@ const _features = [
     Icons.graphic_eq,
   ),
   _Feature(
-    '03 / Documents',
+    '03 / Video',
+    'Video Fingerprinting',
+    'Structural ownership identifiers bound to MP4/MOV containers — proving provenance across shares without changing how the video plays.',
+    [
+      'Container structure profiling',
+      'SHA-256 ownership identifiers',
+      'On-device verification',
+    ],
+    Icons.movie_outlined,
+  ),
+  _Feature(
+    '04 / Documents',
     'PDF Fingerprinting',
     'Hidden ownership identifiers embedded in document structure with protected metadata — proving provenance for documents without altering the reading experience.',
     [
@@ -87,23 +99,23 @@ const _tech = [
 
 const _milestones = [
   (
-    'In progress',
+    'Shipped in app',
     true,
-    'Image watermark foundation',
+    'On-device prototype suite',
     [
-      'Image watermark embedding',
-      'Watermark extraction',
-      'Ownership verification APIs',
+      'Image LSB watermarking',
+      'Audio WAV watermarking',
+      'Video + PDF structural fingerprints',
     ]
   ),
   (
-    'Planned',
-    false,
-    'Audio & document pipelines',
+    'In progress',
+    true,
+    'Ownership verification APIs',
     [
-      'Audio fingerprint embedding',
-      'PDF structural fingerprinting',
-      'Cross-format verification',
+      'Server-side registration',
+      'Cross-device verification',
+      'Creator identity binding',
     ]
   ),
   (
@@ -121,8 +133,7 @@ const _milestones = [
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, required this.onOpenTool});
 
-  /// Jumps to a tool tab: 1 = image, 2 = pdf.
-  final void Function(int tabIndex) onOpenTool;
+  final void Function(EmTool tool) onOpenTool;
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +183,7 @@ class _SectionPadding extends StatelessWidget {
 class _Hero extends StatelessWidget {
   const _Hero({required this.onOpenTool});
 
-  final void Function(int) onOpenTool;
+  final void Function(EmTool) onOpenTool;
 
   @override
   Widget build(BuildContext context) {
@@ -233,12 +244,12 @@ class _Hero extends StatelessWidget {
                 runSpacing: 12,
                 children: [
                   FilledButton(
-                    onPressed: () => onOpenTool(1),
+                    onPressed: () => onOpenTool(EmTool.image),
                     child: const Text('Try the image tool'),
                   ),
                   OutlinedButton(
-                    onPressed: () => onOpenTool(2),
-                    child: const Text('Fingerprint a PDF'),
+                    onPressed: () => onOpenTool(EmTool.audio),
+                    child: const Text('Protect audio'),
                   ),
                 ],
               ),
@@ -399,7 +410,7 @@ class _StatsStrip extends StatelessWidget {
   const _StatsStrip();
 
   static const _stats = [
-    ('3', 'Media formats supported'),
+    ('4', 'Media formats supported'),
     ('1', 'Fingerprint per asset'),
     ('0', 'Visible changes to content'),
     ('∞', 'Verifications per fingerprint'),
@@ -455,7 +466,7 @@ class _Features extends StatelessWidget {
       children: [
         const SectionHeading(
           tag: 'Capabilities',
-          title: 'One platform, three media formats',
+          title: 'One platform, four media formats',
           desc:
               'EchoMark protects digital content across the formats creators actually ship — without altering how it looks or sounds.',
         ),
@@ -761,7 +772,7 @@ class _Technologies extends StatelessWidget {
 class _Status extends StatelessWidget {
   const _Status({required this.onOpenTool});
 
-  final void Function(int) onOpenTool;
+  final void Function(EmTool) onOpenTool;
 
   @override
   Widget build(BuildContext context) {
@@ -858,7 +869,7 @@ class _Status extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: () => onOpenTool(1),
+                onPressed: () => onOpenTool(EmTool.image),
                 child: const Text('Open the live demo'),
               ),
             ],

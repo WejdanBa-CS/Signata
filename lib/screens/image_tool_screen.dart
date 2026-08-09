@@ -13,14 +13,17 @@ import '../widgets/em_widgets.dart';
 enum ToolMode { embed, verify }
 
 class ImageToolScreen extends StatefulWidget {
-  const ImageToolScreen({super.key});
+  const ImageToolScreen({super.key, this.defaultOwner = 'Studio Nova'});
+
+  final String defaultOwner;
 
   @override
   State<ImageToolScreen> createState() => _ImageToolScreenState();
 }
 
 class _ImageToolScreenState extends State<ImageToolScreen> {
-  final _ownerController = TextEditingController(text: 'Studio Nova');
+  late final _ownerController =
+      TextEditingController(text: widget.defaultOwner);
 
   ToolMode _mode = ToolMode.embed;
   String? _workingStep;
@@ -53,13 +56,10 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
   }
 
   Future<void> _pickAndRun() async {
-    final picked = await FilePicker.pickFiles(
-      type: FileType.image,
-      withData: true,
-    );
+    final picked = await FilePicker.pickFiles(type: FileType.image);
     final file = picked?.files.firstOrNull;
-    final bytes = file?.bytes;
-    if (file == null || bytes == null) return;
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
 
     _reset();
     setState(() => _fileName = file.name);

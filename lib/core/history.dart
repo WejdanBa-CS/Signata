@@ -18,7 +18,7 @@ class HistoryEntry {
     required this.at,
   });
 
-  /// "image" | "pdf"
+  /// "image" | "audio" | "video" | "pdf"
   final String medium;
 
   /// "embed" | "verify"

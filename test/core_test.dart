@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:echomark/core/audio_watermark.dart';
 import 'package:echomark/core/fingerprint.dart';
 import 'package:echomark/core/image_watermark.dart';
 import 'package:echomark/core/pdf_fingerprint.dart';
 import 'package:echomark/core/report.dart';
+import 'package:echomark/core/video_fingerprint.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
@@ -143,6 +145,113 @@ void main() {
             Uint8List.fromList(latin1.encode('hello world'))),
         throwsA(isA<NotAPdfException>()),
       );
+    });
+  });
+
+  group('audio watermark', () {
+    Uint8List sampleWav({int samples = 8000}) {
+      // Minimal 16-bit mono PCM WAV.
+      final dataSize = samples * 2;
+      final bytes = BytesBuilder();
+      void writeString(String s) => bytes.add(s.codeUnits);
+      void writeUint32(int v) {
+        final b = ByteData(4)..setUint32(0, v, Endian.little);
+        bytes.add(b.buffer.asUint8List());
+      }
+
+      void writeUint16(int v) {
+        final b = ByteData(2)..setUint16(0, v, Endian.little);
+        bytes.add(b.buffer.asUint8List());
+      }
+
+      writeString('RIFF');
+      writeUint32(36 + dataSize);
+      writeString('WAVE');
+      writeString('fmt ');
+      writeUint32(16);
+      writeUint16(1); // PCM
+      writeUint16(1); // mono
+      writeUint32(44100);
+      writeUint32(44100 * 2);
+      writeUint16(2);
+      writeUint16(16);
+      writeString('data');
+      writeUint32(dataSize);
+      final pcm = Uint8List(dataSize);
+      for (var i = 0; i < samples; i++) {
+        final sample = (i * 13) & 0xffff;
+        pcm[i * 2] = sample & 0xff;
+        pcm[i * 2 + 1] = (sample >> 8) & 0xff;
+      }
+      bytes.add(pcm);
+      return bytes.toBytes();
+    }
+
+    test('embed round trip verifies', () async {
+      final outcome = await embedAudioWatermark(
+        fileBytes: sampleWav(),
+        owner: 'Studio Nova',
+        fileName: 'clip.wav',
+      );
+      expect(outcome.verified, isTrue);
+      expect(outcome.recovered?.owner, 'Studio Nova');
+      expect(outcome.recovered?.signatureValid, isTrue);
+    });
+
+    test('standalone extraction recovers a genuine payload', () async {
+      final embedded = await embedAudioWatermark(
+        fileBytes: sampleWav(),
+        owner: 'Creator X',
+        fileName: 'voice.wav',
+      );
+      final extracted = await extractAudioWatermark(embedded.markedWav);
+      final payload = AudioPayload.tryParse(extracted.raw);
+      expect(payload, isNotNull);
+      expect(payload!.signatureValid, isTrue);
+    });
+  });
+
+  group('video fingerprint', () {
+    Uint8List sampleMp4() {
+      // Minimal ftyp + free-sized moov/mdat-like atoms for the profiler.
+      final bytes = BytesBuilder();
+      void atom(String type, List<int> body) {
+        final size = 8 + body.length;
+        final header = ByteData(8)
+          ..setUint32(0, size, Endian.big);
+        final out = Uint8List(size);
+        out.setAll(0, header.buffer.asUint8List());
+        out.setAll(4, type.codeUnits);
+        out.setAll(8, body);
+        bytes.add(out);
+      }
+
+      atom('ftyp', [...'isom'.codeUnits, 0, 0, 0, 0, ...'isom'.codeUnits]);
+      atom('moov', [...'vide'.codeUnits, ...'soun'.codeUnits]);
+      atom('mdat', List<int>.filled(64, 7));
+      return bytes.toBytes();
+    }
+
+    test('embed round trip verifies', () async {
+      final outcome = await embedVideoFingerprint(
+        source: sampleMp4(),
+        owner: 'Studio Nova',
+        fileName: 'reel.mp4',
+      );
+      expect(outcome.verified, isTrue);
+      expect(outcome.structureMatch, isTrue);
+      expect(outcome.recovered?.owner, 'Studio Nova');
+    });
+
+    test('standalone verification of a delivered file passes', () async {
+      final embedded = await embedVideoFingerprint(
+        source: sampleMp4(),
+        owner: 'Studio Nova',
+        fileName: 'reel.mp4',
+      );
+      final verified = await verifyVideoFingerprint(embedded.markedBytes);
+      expect(verified.verified, isTrue);
+      expect(verified.recovered?.identifier, embedded.payload.identifier);
     });
   });
 
