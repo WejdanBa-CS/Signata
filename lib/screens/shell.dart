@@ -9,6 +9,7 @@ import 'home_screen.dart';
 import 'image_tool_screen.dart';
 import 'pdf_tool_screen.dart';
 import 'tools_hub_screen.dart';
+import 'trace_screen.dart';
 import 'video_tool_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -51,6 +52,8 @@ class _AppShellState extends State<AppShell> {
         return VideoToolScreen(defaultOwner: _defaultOwner);
       case EmTool.pdf:
         return PdfToolScreen(defaultOwner: _defaultOwner);
+      case EmTool.trace:
+        return const TraceScreen();
     }
   }
 
@@ -59,6 +62,7 @@ class _AppShellState extends State<AppShell> {
         EmTool.audio => 'Audio',
         EmTool.video => 'Video',
         EmTool.pdf => 'PDF',
+        EmTool.trace => 'Trace',
       };
 
   @override

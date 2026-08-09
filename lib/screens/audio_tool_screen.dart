@@ -9,8 +9,10 @@ import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
+import '../core/trace_models.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import '../widgets/publish_claim_button.dart';
 
 enum AudioMode { embed, verify }
 
@@ -249,6 +251,16 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
                   onPressed: _shareMarked,
                   icon: const Icon(Icons.ios_share, size: 18),
                   label: const Text('Share watermarked WAV'),
+                ),
+                const SizedBox(height: 10),
+                PublishClaimButton(
+                  medium: TraceMedium.audio,
+                  owner: _embedOutcome!.payload.owner,
+                  subject: _embedOutcome!.payload.asset,
+                  reference: _embedOutcome!.payload.signature,
+                  issued: _embedOutcome!.payload.issued,
+                  alg: _embedOutcome!.payload.alg,
+                  kid: _embedOutcome!.payload.kid,
                 ),
               ],
             ],

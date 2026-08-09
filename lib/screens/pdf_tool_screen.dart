@@ -9,8 +9,10 @@ import '../core/history.dart';
 import '../core/pdf_fingerprint.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
+import '../core/trace_models.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import '../widgets/publish_claim_button.dart';
 
 enum PdfMode { embed, verify }
 
@@ -257,6 +259,18 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
                   onPressed: _shareMarked,
                   icon: const Icon(Icons.ios_share, size: 18),
                   label: const Text('Share fingerprinted PDF'),
+                ),
+                const SizedBox(height: 10),
+                PublishClaimButton(
+                  medium: TraceMedium.pdf,
+                  owner: _embedOutcome!.payload.owner,
+                  subject: _embedOutcome!.payload.document,
+                  reference: _embedOutcome!.payload.identifier ??
+                      _embedOutcome!.payload.signature ??
+                      '',
+                  issued: _embedOutcome!.payload.issued,
+                  alg: _embedOutcome!.payload.alg,
+                  kid: _embedOutcome!.payload.kid,
                 ),
               ],
             ],
