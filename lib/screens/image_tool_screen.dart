@@ -10,9 +10,11 @@ import '../core/image_watermark.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
 import '../core/trace_models.dart';
+import '../core/usage_entitlements.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import '../widgets/publish_claim_button.dart';
+import '../widgets/usage_paywall.dart';
 
 enum ToolMode { embed, verify }
 
@@ -60,6 +62,10 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
   }
 
   Future<void> _pickAndRun() async {
+    if (_mode == ToolMode.embed) {
+      final allowed = await ensureUsage(context, UsageKind.protect);
+      if (!allowed || !mounted) return;
+    }
     final picked = await FilePicker.pickFiles(type: FileType.image);
     final file = picked?.files.firstOrNull;
     if (file == null) return;
@@ -239,6 +245,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_mode == ToolMode.embed) ...[
+                const UsageStatusBanner(kind: UsageKind.protect),
                 const MonoLabel('Ownership claim'),
                 const SizedBox(height: 10),
                 TextField(

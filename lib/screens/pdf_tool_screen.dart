@@ -10,9 +10,11 @@ import '../core/pdf_fingerprint.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
 import '../core/trace_models.dart';
+import '../core/usage_entitlements.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import '../widgets/publish_claim_button.dart';
+import '../widgets/usage_paywall.dart';
 
 enum PdfMode { embed, verify }
 
@@ -58,6 +60,10 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
   }
 
   Future<void> _pickAndRun() async {
+    if (_mode == PdfMode.embed) {
+      final allowed = await ensureUsage(context, UsageKind.protect);
+      if (!allowed || !mounted) return;
+    }
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
@@ -242,6 +248,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_mode == PdfMode.embed) ...[
+                const UsageStatusBanner(kind: UsageKind.protect),
                 const MonoLabel('Ownership claim'),
                 const SizedBox(height: 10),
                 TextField(

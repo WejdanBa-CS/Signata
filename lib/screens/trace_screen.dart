@@ -16,8 +16,10 @@ import '../core/social_protect.dart';
 import '../core/trace_models.dart';
 import '../core/trace_store.dart';
 import '../core/url_tracer.dart';
+import '../core/usage_entitlements.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import '../widgets/usage_paywall.dart';
 
 class TraceScreen extends StatefulWidget {
   const TraceScreen({
@@ -83,6 +85,8 @@ class _TraceScreenState extends State<TraceScreen>
 
   Future<void> _scan({String? url}) async {
     final target = (url ?? _urlController.text).trim();
+    final allowed = await ensureUsage(context, UsageKind.trace);
+    if (!allowed || !mounted) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -119,6 +123,8 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _rescanAll() async {
+    final allowed = await ensureUsage(context, UsageKind.trace);
+    if (!allowed || !mounted) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -163,6 +169,8 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _protectFromPicker() async {
+    final allowed = await ensureUsage(context, UsageKind.protect);
+    if (!allowed || !mounted) return;
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const [
@@ -187,6 +195,8 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _protectPaths(List<String> paths) async {
+    final allowed = await ensureUsage(context, UsageKind.protect);
+    if (!allowed || !mounted) return;
     final files = <({String name, Uint8List bytes})>[];
     for (final path in paths) {
       final file = File(path);
@@ -337,6 +347,7 @@ class _TraceScreenState extends State<TraceScreen>
                     ],
                   ),
                   const SizedBox(height: 12),
+                  const UsageStatusBanner(kind: UsageKind.trace),
                   TextField(
                     controller: _urlController,
                     keyboardType: TextInputType.url,

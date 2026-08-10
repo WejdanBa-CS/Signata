@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
+import '../core/usage_entitlements.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import '../widgets/usage_paywall.dart';
 import 'privacy_policy_screen.dart';
 
 class AccountScreen extends StatelessWidget {
@@ -102,6 +104,8 @@ class AccountScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        const _PlanCard(),
+        const SizedBox(height: 16),
         EmCard(
           padding: const EdgeInsets.all(18),
           child: Column(
@@ -126,6 +130,91 @@ class AccountScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Plan status + quota + mock premium purchase.
+class _PlanCard extends StatefulWidget {
+  const _PlanCard();
+
+  @override
+  State<_PlanCard> createState() => _PlanCardState();
+}
+
+class _PlanCardState extends State<_PlanCard> {
+  UsageSnapshot? _snapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final snapshot = await UsageEntitlements.instance.snapshot();
+    if (!mounted) return;
+    setState(() => _snapshot = snapshot);
+  }
+
+  Future<void> _goPremium() async {
+    final purchased = await purchasePremiumFlow(context);
+    if (purchased) await _refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final snap = _snapshot;
+    return EmCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const MonoLabel('Plan'),
+              const Spacer(),
+              if (snap != null)
+                MonoLabel(
+                  snap.isPremium ? 'Premium' : 'Free',
+                  color: snap.isPremium ? EmColors.accent : EmColors.primary,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (snap == null)
+            const Text(
+              'Loading plan…',
+              style: TextStyle(fontSize: 13, color: EmColors.mutedForeground),
+            )
+          else if (snap.isPremium)
+            const Text(
+              'Unlimited protects and Trace scans. Thanks for supporting Signata.',
+              style: TextStyle(
+                  fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+            )
+          else ...[
+            Text(
+              '${snap.protectRemaining} of ${snap.protectLimit} free protects and '
+              '${snap.traceRemaining} of ${snap.traceLimit} free Trace scans left today. '
+              'Watch an ad for extras, or go Premium for unlimited use.',
+              style: const TextStyle(
+                  fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: _goPremium,
+              icon: const Icon(Icons.workspace_premium_outlined, size: 18),
+              label: const Text('Go Premium'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Demo billing — real Play Billing / AdMob come later.',
+              style: TextStyle(fontSize: 11.5, color: EmColors.mutedForeground),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
