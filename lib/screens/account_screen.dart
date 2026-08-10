@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/auth.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import 'privacy_policy_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -96,6 +97,30 @@ class AccountScreen extends StatelessWidget {
                   side: BorderSide(
                       color: EmColors.destructive.withValues(alpha: 0.5)),
                 ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        EmCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MonoLabel('Legal'),
+              const SizedBox(height: 10),
+              const Text(
+                'How Signata collects, uses, and protects your data under Saudi PDPL.',
+                style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: EmColors.mutedForeground),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: () => PrivacyPolicyScreen.open(context),
+                icon: const Icon(Icons.privacy_tip_outlined, size: 18),
+                label: const Text('Privacy Policy'),
               ),
             ],
           ),
