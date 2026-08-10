@@ -6,6 +6,7 @@ import '../core/auth.dart';
 import '../core/google_auth_config.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
+import 'privacy_policy_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -450,7 +451,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: const TextStyle(color: EmColors.primary),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => PrivacyPolicyScreen.open(context),
+                          child: const Text(
+                            'Privacy Policy',
+                            style: TextStyle(
+                              color: EmColors.mutedForeground,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
                         Text(
                           googleReady
                               ? 'Email passwords stay in on-device secure storage. Google uses your Google account.'
