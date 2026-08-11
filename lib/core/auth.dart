@@ -395,7 +395,9 @@ class AuthService extends ChangeNotifier {
         throw const AuthException('Google sign-in was cancelled.');
       }
       throw AuthException(
-        'Google sign-in failed. Use email for now, or add a Google OAuth client ID for this app. (${error.description ?? error.code.name})',
+        'Google sign-in failed. Confirm the Web client ID is set, and that '
+        'an Android OAuth client exists for package app.signata.signata with '
+        'your debug/release SHA-1. (${error.description ?? error.code.name})',
       );
     } catch (error) {
       if (error is AuthException) rethrow;
