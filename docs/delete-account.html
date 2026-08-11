@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete Your Account — Signata</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --card: #101a2c;
+    --fg: #e8eef7;
+    --muted: #9db0c7;
+    --primary: #57d9ec;
+    --accent: #37d69c;
+    --destructive: #ff6b6b;
+    --border: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 22px 80px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 20px; letter-spacing: -0.3px;
+  }
+  .brand .dot {
+    width: 30px; height: 30px; border-radius: 9px;
+    border: 1.5px solid var(--primary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .brand .dot::after {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .tag {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--primary); margin-top: 34px;
+  }
+  h1 { font-size: 30px; letter-spacing: -0.5px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 15px; margin-bottom: 26px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px; margin-bottom: 18px;
+  }
+  h2 { font-size: 19px; margin: 0 0 10px; letter-spacing: -0.2px; }
+  p, li { color: var(--muted); font-size: 15px; }
+  strong { color: var(--fg); font-weight: 600; }
+  ol, ul { padding-left: 22px; margin: 8px 0 0; }
+  li { margin-bottom: 10px; }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .keep { color: var(--accent); }
+  .gone { color: var(--destructive); }
+  .footer { margin-top: 28px; color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="dot"></span>Signata</div>
+
+  <div class="tag">Account</div>
+  <h1>Delete Your Signata Account</h1>
+  <div class="sub">This page explains how to request deletion of your Signata account and the data associated with it.</div>
+
+  <div class="card">
+    <h2>How to request account deletion</h2>
+    <ol>
+      <li>Send an email to <a href="mailto:FocusMindDev@gmail.com?subject=Signata%20account%20deletion%20request"><strong>FocusMindDev@gmail.com</strong></a> with the subject line <strong>"Signata account deletion request"</strong>.</li>
+      <li>Include the <strong>email address of your Signata account</strong> (the one you registered with, or the Google account you used to sign in).</li>
+      <li>We will verify the request and confirm the deletion by reply within <strong>30 days</strong>.</li>
+    </ol>
+    <p>Alternatively, you can sign out and uninstall the app at any time — email accounts created in Signata are stored only on your device, so removing the app's data on your device deletes them locally.</p>
+  </div>
+
+  <div class="card">
+    <h2>What is deleted</h2>
+    <ul>
+      <li class="gone"><strong>Account data</strong> — your name, email address, and authentication data.</li>
+      <li class="gone"><strong>Encrypted fingerprints and ownership logs</strong> associated with your account on our systems.</li>
+      <li class="gone"><strong>Trace logs and watchlist entries</strong> linked to your account.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>What is kept</h2>
+    <ul>
+      <li class="keep"><strong>Watermarks already embedded in your exported files</strong> cannot be removed remotely — they live inside files you created and shared. Deleting your account severs the link between those watermarks and your account records.</li>
+      <li class="keep"><strong>Legal compliance records</strong>, if any, may be retained only as long as required by applicable law (Kingdom of Saudi Arabia, PDPL), after which they are erased.</li>
+    </ul>
+    <p>There is no additional retention period beyond the verification window: once confirmed, deletion is permanent and cannot be undone.</p>
+  </div>
+
+  <div class="card">
+    <h2>Questions</h2>
+    <p>For any questions about deletion or our data practices, contact <a href="mailto:FocusMindDev@gmail.com">FocusMindDev@gmail.com</a> or read the <a href="./index.html">Signata Privacy Policy</a>.</p>
+  </div>
+
+  <div class="footer">Signata — invisible ownership, verifiable authenticity.</div>
+</div>
+</body>
+</html>
