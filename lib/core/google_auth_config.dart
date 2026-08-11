@@ -3,12 +3,12 @@
 /// Create these in Google Cloud Console (APIs & Services → Credentials):
 /// 1. OAuth client type **Web application** → use its ID as [serverClientId]
 /// 2. OAuth client type **Android** with package `app.signata.signata` + SHA-1
-///    (needed for Google to trust this app; you usually do NOT paste that ID here)
+///    Add both the **debug** and **upload/release** SHA-1 fingerprints (and later
+///    the Play App Signing SHA-1 from Play Console → App integrity).
 ///
 /// Sources (first match wins):
 /// 1. Runtime override saved from the login screen (secure storage)
 /// 2. `--dart-define=GOOGLE_SERVER_CLIENT_ID=...` or `--dart-define-from-file=`
-/// 3. Optional [defaultValue] below
 library;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -18,10 +18,14 @@ class GoogleAuthConfig {
 
   static const _storageKey = 'signata_google_server_client_id';
 
-  /// Debug Android package + SHA-1 for the OAuth Android client.
+  /// Android package + SHA-1 fingerprints for the OAuth Android client.
   static const androidPackageName = 'app.signata.signata';
   static const androidDebugSha1 =
       '0A:3A:67:69:E8:44:A7:A5:0A:1B:FD:CD:61:A1:32:5C:2B:F6:9F:AA';
+
+  /// Upload keystore SHA-1 used to sign Play uploads (android/upload-keystore.jks).
+  static const androidReleaseSha1 =
+      '73:17:8E:4C:0D:25:57:C6:67:17:6C:C8:7F:91:C7:7B:89:0C:77:FA';
 
   /// Web client ID — required on Android as `serverClientId`.
   static const String _defineServerClientId = String.fromEnvironment(

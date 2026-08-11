@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 6),
                 const Text(
                   '• Web application → copy its Client ID\n'
-                  '• Android → package + SHA-1 below (no need to paste that ID)',
+                  '• Android → package + BOTH SHA-1s below (no need to paste that ID)',
                   style: TextStyle(
                     fontSize: 13,
                     height: 1.45,
@@ -137,7 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 12),
                 SelectableText(
                   'Package: ${GoogleAuthConfig.androidPackageName}\n'
-                  'SHA-1: ${GoogleAuthConfig.androidDebugSha1}',
+                  'Debug SHA-1: ${GoogleAuthConfig.androidDebugSha1}\n'
+                  'Release SHA-1: ${GoogleAuthConfig.androidReleaseSha1}',
                   style: emMono(size: 11),
                 ),
                 const SizedBox(height: 10),
@@ -152,11 +153,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         ));
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('SHA-1 copied')),
+                          const SnackBar(content: Text('Debug SHA-1 copied')),
                         );
                       },
                       icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy SHA-1'),
+                      label: const Text('Copy debug SHA-1'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(
+                          text: GoogleAuthConfig.androidReleaseSha1,
+                        ));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Release SHA-1 copied')),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('Copy release SHA-1'),
                     ),
                     TextButton.icon(
                       onPressed: () async {

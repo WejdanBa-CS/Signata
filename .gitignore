@@ -46,3 +46,9 @@ app.*.map.json
 
 # Local Google OAuth secrets (use google_oauth.example.env as a template)
 google_oauth.env
+
+# Android release signing (never commit)
+android/key.properties
+android/*.jks
+android/*.keystore
+**/upload-keystore.jks
