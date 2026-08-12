@@ -144,12 +144,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Protect images, audio, video, and PDFs — then verify ownership from any copy.',
+                          _isSignUp
+                              ? 'Accounts stay on this device. Export a recovery kit from Account after signup so you can restore your claim key later.'
+                              : 'Protect images, audio, video, and PDFs — then verify ownership from any copy.',
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: EmColors.mutedForeground,
                             height: 1.5,
                           ),
                         ),
+                        if (!AuthService.instance.isGoogleConfigured) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            'Google Sign-In is not configured in this build — use email, or paste a Web client ID under Account after signing in.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: EmColors.mutedForeground,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 28),
                         EmCard(
                           padding: const EdgeInsets.all(22),

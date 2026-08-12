@@ -15,6 +15,7 @@
    ```
 5. After the first Play upload, open **Play Console → App integrity** and add the
    **App signing key certificate SHA-1** to the Android OAuth client as well.
+6. Optional for debug without rebuild: Account → Paste Web client ID.
 
 ## Build the App Bundle
 
@@ -24,10 +25,37 @@
 
 Output: `build/app/outputs/bundle/release/app-release.aab`
 
-Upload that AAB in Play Console → Production / Testing.
+Upload that AAB in Play Console → Closed testing (then Production).
+
+## Debug run with Google
+
+```powershell
+.\tool\run_debug.ps1
+```
+
+Uses `google_oauth.env` when present; otherwise email-only Google button stays hidden.
 
 ## Signing
 
 - Upload keystore: `android/upload-keystore.jks` (local only, gitignored)
 - Passwords: `android/key.properties` (local only, gitignored)
 - Keep a secure backup of both — losing them blocks future updates unless you use Play App Signing recovery.
+
+## Smoke test before upload
+
+- [ ] Email signup → activate → Home
+- [ ] Export / import recovery kit (Account)
+- [ ] Image protect → verify → report export
+- [ ] Trace: Check local file finds your mark
+- [ ] Share image from Files into Signata → Trace check
+- [ ] Social URL scan shows fallback warning
+- [ ] Google Sign-In (debug + release SHA configured)
+- [ ] Share intent while logged out still opens Trace after login
+- [ ] Delete account wipes local data
+- [ ] R8 release install: Google + share ingress still work
+
+## Notes
+
+- Trace prefers **shared/local files** over post URLs (platforms strip marks).
+- Freemium Premium/ads are demo billing until Play Billing / AdMob are wired.
+- `android:allowBackup="false"`; mailto queries are in the manifest.
