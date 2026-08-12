@@ -20,13 +20,21 @@ String userScopedKey(String base) {
 }
 
 /// One-shot migration: copy legacy global [legacyKey] into the current user's
-/// scoped key when the scoped key is empty.
+/// scoped key when the scoped key is empty, then remove the legacy key so a
+/// later clear cannot be undone by remigration.
 Future<void> migrateLegacyPrefsKey(String legacyKey, String scopedKey) async {
   final prefs = await SharedPreferences.getInstance();
-  if (prefs.containsKey(scopedKey)) return;
+  if (prefs.containsKey(scopedKey)) {
+    // Scoped data already exists — drop leftover global copy if present.
+    if (prefs.containsKey(legacyKey)) {
+      await prefs.remove(legacyKey);
+    }
+    return;
+  }
   final raw = prefs.getString(legacyKey);
   if (raw == null || raw.isEmpty) return;
   await prefs.setString(scopedKey, raw);
+  await prefs.remove(legacyKey);
 }
 
 /// Offline recovery kit text (claim key + account hints). Store safely offline.

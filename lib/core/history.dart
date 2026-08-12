@@ -102,6 +102,8 @@ class HistoryStore {
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
+    // Also drop the pre-scoping key so _ensureMigrated() cannot resurrect it.
+    await prefs.remove(_legacyKey);
   }
 
   static Future<void> clearForUser(String userId) async {
