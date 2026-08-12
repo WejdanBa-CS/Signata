@@ -12,13 +12,14 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth.dart';
+import 'local_data.dart';
 import 'trace_models.dart';
 
 class ClaimRegistry {
   ClaimRegistry._();
   static final ClaimRegistry instance = ClaimRegistry._();
 
-  static const _prefsKey = 'signata_published_claims_v1';
+  static const _legacyPrefsKey = 'signata_published_claims_v1';
 
   /// Optional remote base URL, e.g. `https://registry.example.com`.
   static String remoteBaseUrl = const String.fromEnvironment(
@@ -32,7 +33,13 @@ class ClaimRegistry {
 
   static bool get hasRemote => remoteBaseUrl.trim().isNotEmpty;
 
+  String get _prefsKey => userScopedKey(_legacyPrefsKey);
+
+  Future<void> _ensureMigrated() =>
+      migrateLegacyPrefsKey(_legacyPrefsKey, _prefsKey);
+
   Future<List<PublishedClaim>> listLocal() async {
+    await _ensureMigrated();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
     if (raw == null || raw.isEmpty) return const [];
@@ -50,11 +57,23 @@ class ClaimRegistry {
   }
 
   Future<void> _saveLocal(List<PublishedClaim> claims) async {
+    await _ensureMigrated();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _prefsKey,
       jsonEncode(claims.map((c) => c.toJson()).toList()),
     );
+  }
+
+  Future<void> clearLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsKey);
+  }
+
+  Future<void> clearForUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final safe = userId.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    await prefs.remove('${_legacyPrefsKey}__$safe');
   }
 
   Future<PublishedClaim?> findByReference(String reference) async {
@@ -116,7 +135,14 @@ class ClaimRegistry {
         final response = await http
             .post(
               uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: {
+                'Content-Type': 'application/json',
+                // Optional shared secret for self-hosted registries.
+                if (const String.fromEnvironment('SIGNATA_REGISTRY_TOKEN')
+                    .isNotEmpty)
+                  'Authorization':
+                      'Bearer ${const String.fromEnvironment('SIGNATA_REGISTRY_TOKEN')}',
+              },
               body: jsonEncode(claim.toJson()),
             )
             .timeout(const Duration(seconds: 15));

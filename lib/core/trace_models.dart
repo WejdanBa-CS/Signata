@@ -187,6 +187,7 @@ class TraceSighting {
     this.matchedPublishedClaimId,
     this.contentType,
     this.error,
+    this.note,
   });
 
   final String id;
@@ -202,6 +203,9 @@ class TraceSighting {
   final String? contentType;
   final String? error;
 
+  /// Soft guidance (e.g. platform may have stripped the watermark).
+  final String? note;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'url': url,
@@ -216,6 +220,7 @@ class TraceSighting {
           'matchedPublishedClaimId': matchedPublishedClaimId,
         if (contentType != null) 'contentType': contentType,
         if (error != null) 'error': error,
+        if (note != null) 'note': note,
       };
 
   static TraceSighting? fromJson(Object? value) {
@@ -239,6 +244,7 @@ class TraceSighting {
         matchedPublishedClaimId: map['matchedPublishedClaimId'] as String?,
         contentType: map['contentType'] as String?,
         error: map['error'] as String?,
+        note: map['note'] as String?,
       );
     } catch (_) {
       return null;

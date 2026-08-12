@@ -1,21 +1,34 @@
 /// Persistent watchlist and sighting log for internet media tracing.
+/// Data is scoped per signed-in user.
 library;
 
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'local_data.dart';
 import 'trace_models.dart';
 
 class TraceStore {
   TraceStore._();
   static final TraceStore instance = TraceStore._();
 
-  static const _watchKey = 'signata_watch_targets_v1';
-  static const _sightingsKey = 'signata_trace_sightings_v1';
+  static const _legacyWatchKey = 'signata_watch_targets_v1';
+  static const _legacySightingsKey = 'signata_trace_sightings_v1';
   static const _maxSightings = 150;
+  static const _autoRescanCooldownKey = 'signata_trace_auto_rescan_at';
+
+  String get _watchKey => userScopedKey(_legacyWatchKey);
+  String get _sightingsKey => userScopedKey(_legacySightingsKey);
+  String get _autoRescanKey => userScopedKey(_autoRescanCooldownKey);
+
+  Future<void> _ensureMigrated() async {
+    await migrateLegacyPrefsKey(_legacyWatchKey, _watchKey);
+    await migrateLegacyPrefsKey(_legacySightingsKey, _sightingsKey);
+  }
 
   Future<List<WatchTarget>> listWatchTargets() async {
+    await _ensureMigrated();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_watchKey);
     if (raw == null) return const [];
@@ -38,6 +51,7 @@ class TraceStore {
   }
 
   Future<WatchTarget> addWatchTarget(String url, {String? label}) async {
+    await _ensureMigrated();
     final normalized = url.trim();
     final existing = List<WatchTarget>.from(await listWatchTargets());
     final prior = existing.where((w) => w.url == normalized).toList();
@@ -77,6 +91,7 @@ class TraceStore {
   }
 
   Future<List<TraceSighting>> listSightings() async {
+    await _ensureMigrated();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_sightingsKey);
     if (raw == null) return const [];
@@ -91,12 +106,58 @@ class TraceStore {
   }
 
   Future<void> addSighting(TraceSighting sighting) async {
+    await _ensureMigrated();
     final items = List<TraceSighting>.from(await listSightings());
     items.insert(0, sighting);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _sightingsKey,
       jsonEncode(items.take(_maxSightings).map((e) => e.toJson()).toList()),
+    );
+  }
+
+  Future<void> clearSightings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_sightingsKey);
+  }
+
+  Future<void> clearWatchlist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_watchKey);
+  }
+
+  Future<void> clearAll() async {
+    await clearWatchlist();
+    await clearSightings();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_autoRescanKey);
+  }
+
+  Future<void> clearForUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final safe = userId.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    await prefs.remove('${_legacyWatchKey}__$safe');
+    await prefs.remove('${_legacySightingsKey}__$safe');
+    await prefs.remove('${_autoRescanCooldownKey}__$safe');
+  }
+
+  /// True if an auto-rescan should run (once per 12h when online).
+  Future<bool> shouldAutoRescan({
+    Duration cooldown = const Duration(hours: 12),
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_autoRescanKey);
+    if (raw == null) return true;
+    final last = DateTime.tryParse(raw);
+    if (last == null) return true;
+    return DateTime.now().toUtc().difference(last) >= cooldown;
+  }
+
+  Future<void> markAutoRescanDone() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _autoRescanKey,
+      DateTime.now().toUtc().toIso8601String(),
     );
   }
 }

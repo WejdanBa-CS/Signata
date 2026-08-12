@@ -1,38 +1,53 @@
 /// Paywall dialog + quota banner for the demo freemium gate.
 ///
-/// `ensureUsage` reserves an attempt; when the daily quota is exhausted it
-/// shows a dialog offering a mock rewarded ad (+1 today) or a mock Premium
-/// purchase (removes limits). Returns true when the caller may proceed.
+/// [ensureUsage] checks quota (and may show the paywall) without consuming.
+/// Call [commitUsage] only after the protect/Trace action succeeds.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/usage_entitlements.dart';
 import '../theme.dart';
 
-/// Reserve one [kind] attempt, showing the paywall when blocked.
-Future<bool> ensureUsage(BuildContext context, UsageKind kind) async {
+/// Ensure the user may attempt [units] of [kind]. Does not consume quota.
+Future<bool> ensureUsage(
+  BuildContext context,
+  UsageKind kind, {
+  int units = 1,
+}) async {
   final entitlements = UsageEntitlements.instance;
-  if (await entitlements.reserve(kind) == GateResult.allowed) return true;
+  if (await entitlements.check(kind, units: units) == GateResult.allowed) {
+    return true;
+  }
   if (!context.mounted) return false;
 
-  final choice = await showDialog<_PaywallChoice>(
-    context: context,
-    builder: (context) => _PaywallDialog(kind: kind),
-  );
-  if (choice == null || !context.mounted) return false;
+  // Keep offering ads until the requested units fit, or the user cancels.
+  while (await entitlements.check(kind, units: units) == GateResult.blocked) {
+    if (!context.mounted) return false;
+    final choice = await showDialog<_PaywallChoice>(
+      context: context,
+      builder: (context) => _PaywallDialog(kind: kind, units: units),
+    );
+    if (choice == null || !context.mounted) return false;
 
-  switch (choice) {
-    case _PaywallChoice.watchAd:
-      final watched = await _showMockAd(context);
-      if (!watched) return false;
-      await entitlements.grantAdBonus(kind: kind);
-      return await entitlements.reserve(kind) == GateResult.allowed;
-    case _PaywallChoice.goPremium:
-      final purchased = await purchasePremiumFlow(context);
-      return purchased;
+    switch (choice) {
+      case _PaywallChoice.watchAd:
+        final watched = await _showMockAd(context);
+        if (!watched) return false;
+        await entitlements.grantAdBonus(kind: kind);
+      case _PaywallChoice.goPremium:
+        final purchased = await purchasePremiumFlow(context);
+        if (!purchased) return false;
+        return true;
+    }
   }
+  return true;
 }
+
+/// Consume quota after a successful action.
+Future<void> commitUsage(UsageKind kind, {int units = 1}) =>
+    UsageEntitlements.instance.commit(kind, units: units);
 
 /// Mock purchase flow, also used from the Account screen.
 Future<bool> purchasePremiumFlow(BuildContext context) async {
@@ -42,10 +57,10 @@ Future<bool> purchasePremiumFlow(BuildContext context) async {
     builder: (context) => AlertDialog(
       backgroundColor: EmColors.card,
       title: const Text('Go Premium'),
-      content: const Text(
+      content: Text(
         'Unlimited protects and Trace scans, no daily limits.\n\n'
-        'Demo build: this simulates a purchase — no real payment is made.',
-        style: TextStyle(height: 1.45),
+        '${UsageEntitlements.isDemoBilling ? 'Demo billing: no real payment is charged in this build.' : 'You will be charged via Google Play.'}',
+        style: const TextStyle(height: 1.45),
       ),
       actions: [
         TextButton(
@@ -54,7 +69,11 @@ Future<bool> purchasePremiumFlow(BuildContext context) async {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text('Buy Premium'),
+          child: Text(
+            UsageEntitlements.isDemoBilling
+                ? 'Unlock demo Premium'
+                : 'Buy Premium',
+          ),
         ),
       ],
     ),
@@ -63,14 +82,22 @@ Future<bool> purchasePremiumFlow(BuildContext context) async {
 
   final ok = await _showProgress(
     context,
-    label: 'Processing purchase…',
+    label: UsageEntitlements.isDemoBilling
+        ? 'Unlocking demo Premium…'
+        : 'Processing purchase…',
     task: entitlements.billing.purchasePremium(),
   );
   if (!ok) return false;
   await entitlements.unlockPremium();
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Premium unlocked — limits removed.')),
+      SnackBar(
+        content: Text(
+          UsageEntitlements.isDemoBilling
+              ? 'Demo Premium unlocked — limits removed on this device.'
+              : 'Premium unlocked — limits removed.',
+        ),
+      ),
     );
   }
   return true;
@@ -114,21 +141,24 @@ Future<bool> _showProgress(
 enum _PaywallChoice { watchAd, goPremium }
 
 class _PaywallDialog extends StatelessWidget {
-  const _PaywallDialog({required this.kind});
+  const _PaywallDialog({required this.kind, this.units = 1});
 
   final UsageKind kind;
+  final int units;
 
   @override
   Widget build(BuildContext context) {
     final what = kind == UsageKind.protect
         ? 'free protects (${UsageEntitlements.freeProtectsPerDay}/day)'
-        : 'free Trace scan (${UsageEntitlements.freeTracePerDay}/day)';
+        : 'free Trace scans (${UsageEntitlements.freeTracePerDay}/day)';
+    final need = units > 1 ? '\n\nThis action needs $units uses.' : '';
     return AlertDialog(
       backgroundColor: EmColors.card,
       title: const Text('Daily limit reached'),
       content: Text(
-        'You have used your $what.\n\n'
-        'Watch a short ad for one more, or go Premium for unlimited use.',
+        'You have used your $what.$need\n\n'
+        'Watch a short demo ad for one more, or unlock demo Premium.\n\n'
+        'Demo billing — nothing is charged.',
         style: const TextStyle(height: 1.45),
       ),
       actions: [
@@ -144,7 +174,7 @@ class _PaywallDialog extends StatelessWidget {
         FilledButton.icon(
           onPressed: () => Navigator.pop(context, _PaywallChoice.goPremium),
           icon: const Icon(Icons.workspace_premium_outlined, size: 18),
-          label: const Text('Go Premium'),
+          label: const Text('Demo Premium'),
         ),
       ],
     );
@@ -168,7 +198,9 @@ class UsageStatusBanner extends StatelessWidget {
         final String text;
         final Color color;
         if (data.isPremium) {
-          text = 'Premium — unlimited use';
+          text = kReleaseMode && !UsageEntitlements.isDemoBilling
+              ? 'Premium — unlimited use'
+              : 'Demo Premium — unlimited on this device';
           color = EmColors.accent;
         } else {
           final left = data.remainingFor(kind);
@@ -177,7 +209,7 @@ class UsageStatusBanner extends StatelessWidget {
               : 'free Trace scan${left == 1 ? '' : 's'}';
           text = left > 0
               ? '$left $noun left today'
-              : 'Daily limit reached — watch an ad or go Premium';
+              : 'Daily limit reached — watch a demo ad or unlock Premium';
           color = left > 0 ? EmColors.primary : EmColors.destructive;
         }
 
