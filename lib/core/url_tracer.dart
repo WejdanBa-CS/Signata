@@ -134,6 +134,14 @@ class UrlTracer {
       reference: extracted.reference ?? matched?.reference,
       matchedPublishedClaimId: matched?.id,
       contentType: contentType,
+      note: !extracted.found
+          ? (social != null
+              ? '${social.label} often recompresses uploads, which can strip '
+                  'hidden fingerprints. If you posted a Signata-protected file, '
+                  'try scanning the original export or a direct CDN media URL.'
+              : 'No Signata fingerprint was readable in this file. If it was '
+                  're-saved, compressed, or re-encoded, the mark may be gone.')
+          : null,
     );
 
     if (persist) await TraceStore.instance.addSighting(sighting);

@@ -103,6 +103,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           reference: outcome.payload.signature,
           at: DateTime.now(),
         ));
+        await commitUsage(UsageKind.protect);
       } else {
         setState(() => _workingStep = 'Scanning audio samples');
         final outcome = await extractAudioWatermark(bytes, claimKey: claimKey);
@@ -175,6 +176,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
     if (outcome == null) return;
     setState(() => _reportStatus = 'Sealing…');
     try {
+      final claimKey = await AccountClaimKeys.current();
       final sealed = sealReport(ReportBody(
         medium: 'audio',
         subject: _fileName ?? outcome.payload.asset,
@@ -192,8 +194,8 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
               '${outcome.bitsUsed} / ${outcome.capacityBits} bits',
           'roundTripMs': _elapsedMs,
         },
-      ));
-      if (!verifySealedReport(sealed)) {
+      ), claimKey: claimKey);
+      if (!verifySealedReport(sealed, claimKey: claimKey)) {
         throw Exception('Seal self-check failed.');
       }
       await shareBytes(
@@ -250,8 +252,12 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _ownerController,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     hintText: 'Creator or studio name',
+                    helperText:
+                        'Bound to your Signata account — cannot be spoofed for authentication.',
+                    helperMaxLines: 2,
                   ),
                 ),
                 const SizedBox(height: 16),

@@ -8,8 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import 'social_platforms.dart';
 import 'social_protect.dart';
 
-/// Writes [bytes] to a temp file and opens the native share sheet, letting
-/// the user save to Files, AirDrop, message, etc.
+/// Writes [bytes] to a temp file and opens the native share sheet, then
+/// deletes the temp file.
 Future<void> shareBytes({
   required Uint8List bytes,
   required String fileName,
@@ -17,14 +17,23 @@ Future<void> shareBytes({
   String? text,
 }) async {
   final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}${Platform.pathSeparator}$fileName');
-  await file.writeAsBytes(bytes, flush: true);
-  await SharePlus.instance.share(
-    ShareParams(
-      files: [XFile(file.path, mimeType: mimeType)],
-      text: text,
-    ),
+  final stamp = DateTime.now().microsecondsSinceEpoch;
+  final file = File(
+    '${dir.path}${Platform.pathSeparator}signata-$stamp-$fileName',
   );
+  await file.writeAsBytes(bytes, flush: true);
+  try {
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path, mimeType: mimeType)],
+        text: text,
+      ),
+    );
+  } finally {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
 }
 
 /// Shares one or more fingerprinted social assets, then optionally opens the
@@ -37,28 +46,39 @@ Future<void> shareProtectedToSocial({
 }) async {
   if (items.isEmpty) return;
   final dir = await getTemporaryDirectory();
+  final stamp = DateTime.now().microsecondsSinceEpoch;
+  final written = <File>[];
   final files = <XFile>[];
   for (final item in items) {
     final path =
-        '${dir.path}${Platform.pathSeparator}signata-${platform.shortLabel}-${item.fileName}';
+        '${dir.path}${Platform.pathSeparator}signata-$stamp-${platform.shortLabel}-${item.fileName}';
     final file = File(path);
     await file.writeAsBytes(item.bytes, flush: true);
+    written.add(file);
     files.add(XFile(file.path, mimeType: item.mimeType, name: item.fileName));
   }
 
-  await SharePlus.instance.share(
-    ShareParams(
-      files: files,
-      text: caption ??
-          'Protected with Signata · ready for ${platform.label}',
-      subject: 'Signata · ${platform.label}',
-    ),
-  );
+  try {
+    await SharePlus.instance.share(
+      ShareParams(
+        files: files,
+        text: caption ??
+            'Protected with Signata · ready for ${platform.label}',
+        subject: 'Signata · ${platform.label}',
+      ),
+    );
 
-  if (openAppAfterShare) {
-    try {
-      await platform.openApp();
-    } catch (_) {}
+    if (openAppAfterShare) {
+      try {
+        await platform.openApp();
+      } catch (_) {}
+    }
+  } finally {
+    for (final file in written) {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
   }
 }
 

@@ -101,6 +101,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           reference: outcome.payload.signature,
           at: DateTime.now(),
         ));
+        await commitUsage(UsageKind.protect);
       } else {
         setState(() => _workingStep = 'Scanning for a watermark');
         final outcome = await extractWatermark(bytes, claimKey: claimKey);
@@ -173,6 +174,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
     if (outcome == null) return;
     setState(() => _reportStatus = 'Sealing…');
     try {
+      final claimKey = await AccountClaimKeys.current();
       final recovered = outcome.recovered;
       final sealed = sealReport(ReportBody(
         medium: 'image',
@@ -192,8 +194,8 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
               '${outcome.bitsUsed} / ${outcome.capacityBits} bits',
           'roundTripMs': _elapsedMs,
         },
-      ));
-      if (!verifySealedReport(sealed)) {
+      ), claimKey: claimKey);
+      if (!verifySealedReport(sealed, claimKey: claimKey)) {
         throw Exception('Seal self-check failed.');
       }
       await shareBytes(
@@ -250,8 +252,12 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _ownerController,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     hintText: 'Creator or studio name',
+                    helperText:
+                        'Bound to your Signata account — cannot be spoofed for authentication.',
+                    helperMaxLines: 2,
                   ),
                 ),
                 const SizedBox(height: 16),

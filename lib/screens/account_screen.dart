@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/auth.dart';
+import '../core/local_data.dart';
+import '../core/share_utils.dart';
+import '../core/trace_store.dart';
 import '../core/usage_entitlements.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
@@ -65,7 +71,9 @@ class AccountScreen extends StatelessWidget {
                     MonoLabel(
                       user.provider == AuthProvider.google
                           ? 'Google account'
-                          : 'Email account',
+                          : (user.emailVerified
+                              ? 'Email activated'
+                              : 'Email account'),
                       color: EmColors.accent,
                     ),
                   ],
@@ -74,6 +82,8 @@ class AccountScreen extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        const _TwoFactorCard(),
         const SizedBox(height: 16),
         EmCard(
           padding: const EdgeInsets.all(18),
@@ -106,6 +116,8 @@ class AccountScreen extends StatelessWidget {
         const SizedBox(height: 16),
         const _PlanCard(),
         const SizedBox(height: 16),
+        const _PrivacyDataCard(),
+        const SizedBox(height: 16),
         EmCard(
           padding: const EdgeInsets.all(18),
           child: Column(
@@ -114,7 +126,8 @@ class AccountScreen extends StatelessWidget {
               const MonoLabel('Legal'),
               const SizedBox(height: 10),
               const Text(
-                'How Signata collects, uses, and protects your data under Saudi PDPL.',
+                'How Signata handles data on this device under Saudi PDPL. '
+                'Accounts and fingerprints are local unless you configure an optional registry.',
                 style: TextStyle(
                     fontSize: 13,
                     height: 1.45,
@@ -213,6 +226,442 @@ class _PlanCardState extends State<_PlanCard> {
               style: TextStyle(fontSize: 11.5, color: EmColors.mutedForeground),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TwoFactorCard extends StatefulWidget {
+  const _TwoFactorCard();
+
+  @override
+  State<_TwoFactorCard> createState() => _TwoFactorCardState();
+}
+
+class _TwoFactorCardState extends State<_TwoFactorCard> {
+  bool _busy = false;
+  String? _setupSecret;
+  String? _setupUri;
+  final _codeController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startSetup() async {
+    setState(() => _busy = true);
+    try {
+      final setup = await AuthService.instance.beginTotpSetup();
+      if (!mounted) return;
+      setState(() {
+        _setupSecret = setup.secret;
+        _setupUri = setup.otpauth;
+        _codeController.clear();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _confirmSetup() async {
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.confirmTotpSetup(_codeController.text);
+      if (!mounted) return;
+      setState(() {
+        _setupSecret = null;
+        _setupUri = null;
+        _codeController.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Two-factor authentication enabled.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _disable() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Disable 2FA?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your password and a current authenticator code.',
+              style: TextStyle(height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Password'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _codeController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(labelText: 'Authenticator code'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Disable'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.disableTotp(
+        password: _passwordController.text,
+        totpCode: _codeController.text,
+      );
+      if (!mounted) return;
+      _passwordController.clear();
+      _codeController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Two-factor authentication disabled.')),
+      );
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = AuthService.instance.user;
+    if (user == null) return const SizedBox.shrink();
+
+    if (user.provider == AuthProvider.google) {
+      return EmCard(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const MonoLabel('Two-factor auth'),
+            const SizedBox(height: 10),
+            const Text(
+              'This Google account uses Google’s own 2FA settings. Manage them in your Google Account security page.',
+              style: TextStyle(
+                  fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final enabled = user.totpEnabled;
+    return EmCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const MonoLabel('Two-factor auth'),
+              const Spacer(),
+              MonoLabel(
+                enabled ? 'On' : 'Off',
+                color: enabled ? EmColors.accent : EmColors.mutedForeground,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            enabled
+                ? 'Sign-in requires your password plus a code from an authenticator app (Google Authenticator, Authy, etc.).'
+                : 'Add an authenticator app for a second step after your password. Secrets stay on this device.',
+            style: const TextStyle(
+                fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+          ),
+          const SizedBox(height: 14),
+          if (_setupSecret != null) ...[
+            const Text(
+              'Add this key in your authenticator app, then enter the 6-digit code:',
+              style: TextStyle(fontSize: 13, height: 1.45),
+            ),
+            const SizedBox(height: 10),
+            SelectableText(
+              _setupSecret!,
+              style: emMono(size: 13),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: _setupSecret!));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Secret copied')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text('Copy secret'),
+                ),
+                if (_setupUri != null)
+                  TextButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: _setupUri!));
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('otpauth link copied')),
+                      );
+                    },
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('Copy setup link'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _codeController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Confirm code',
+                hintText: '123456',
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _busy ? null : _confirmSetup,
+              child: const Text('Confirm & enable'),
+            ),
+          ] else if (enabled)
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _disable,
+              icon: const Icon(Icons.shield_outlined, size: 18),
+              label: const Text('Disable 2FA'),
+            )
+          else
+            FilledButton.icon(
+              onPressed: _busy ? null : _startSetup,
+              icon: const Icon(Icons.phonelink_lock_outlined, size: 18),
+              label: const Text('Enable 2FA'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrivacyDataCard extends StatelessWidget {
+  const _PrivacyDataCard();
+
+  Future<void> _exportRecovery(BuildContext context) async {
+    try {
+      final kit = await buildRecoveryKit();
+      final bytes = Uint8List.fromList(utf8.encode(kit));
+      await shareBytes(
+        bytes: bytes,
+        fileName: 'signata-recovery-kit.txt',
+        mimeType: 'text/plain',
+        text: 'Signata recovery kit — keep offline and private.',
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _clearTrace(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Clear Trace data?'),
+        content: const Text(
+          'Removes your watchlist and sighting timeline on this device. '
+          'Protected files are not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await TraceStore.instance.clearAll();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Trace data cleared.')),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final user = AuthService.instance.user;
+    if (user == null) return;
+    final passwordController = TextEditingController();
+    final totpController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Delete local account?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This erases your Signata account record, claim key, history, '
+              'Trace data, and usage flags on this device. Watermarked files '
+              'you already exported are not deleted from storage.',
+              style: TextStyle(height: 1.45),
+            ),
+            if (user.provider == AuthProvider.email) ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Password'),
+              ),
+              if (user.totpEnabled) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: totpController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration:
+                      const InputDecoration(labelText: 'Authenticator code'),
+                ),
+              ],
+            ] else
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text(
+                  'Google sessions only need this confirmation — no password.',
+                  style: TextStyle(fontSize: 13, color: EmColors.mutedForeground),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: EmColors.destructive,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete forever'),
+          ),
+        ],
+      ),
+    );
+    final password = passwordController.text;
+    final totp = totpController.text;
+    passwordController.dispose();
+    totpController.dispose();
+    if (confirmed != true) return;
+    try {
+      await AuthService.instance.deleteAccount(
+        password: password,
+        totpCode: totp.isEmpty ? null : totp,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return EmCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MonoLabel('Privacy & data'),
+          const SizedBox(height: 10),
+          const Text(
+            'Export a recovery kit before wiping this device. Clear Trace data '
+            'anytime. Delete account removes local Signata identity data.',
+            style: TextStyle(
+                fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _exportRecovery(context),
+                icon: const Icon(Icons.key_outlined, size: 18),
+                label: const Text('Export recovery kit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _clearTrace(context),
+                icon: const Icon(Icons.radar_outlined, size: 18),
+                label: const Text('Clear Trace data'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _deleteAccount(context),
+                icon: const Icon(Icons.delete_forever_outlined, size: 18),
+                label: const Text('Delete account'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: EmColors.destructive,
+                  side: BorderSide(
+                      color: EmColors.destructive.withValues(alpha: 0.5)),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

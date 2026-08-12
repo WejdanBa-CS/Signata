@@ -65,67 +65,68 @@ const _features = [
 const _steps = [
   (
     '01',
-    'Embed',
-    'An encrypted fingerprint is encoded into the media imperceptibly, preserving the original experience.'
+    'Protect',
+    'Signata embeds a signed fingerprint into your media on this device — invisible, bound to your account key.'
   ),
   (
     '02',
-    'Register',
-    "Ownership metadata is stored and cryptographically bound to the creator's identity in the database."
+    'Publish locally',
+    'Claims stay on your phone (optional self-hosted registry later). No Signata cloud database is required.'
   ),
   (
     '03',
-    'Verify',
-    'Any distributed copy can be scanned to extract the fingerprint and confirm authenticity and ownership.'
+    'Trace & verify',
+    'Scan a shared file or URL to recover the fingerprint and confirm it matches your Signata key.'
   ),
 ];
 
 const _goals = [
   'Protect creators from unauthorized redistribution',
-  'Preserve ownership information across platforms',
-  'Build a reliable verification system',
+  'Preserve ownership signals across social recompression when possible',
+  'Keep fingerprints verifiable entirely on-device',
   'Research robust watermark persistence techniques',
   'Explore anti-tampering and anti-removal methods',
 ];
 
 const _tech = [
-  'Python',
-  'FastAPI',
-  'OpenCV',
-  'NumPy',
-  'Cryptography',
-  'PostgreSQL',
+  'Flutter',
+  'Dart',
+  'HMAC-SHA256',
+  'LSB / WAV stego',
+  'On-device secure storage',
+  'Android share intents',
 ];
 
 const _milestones = [
   (
     'Shipped in app',
     true,
-    'On-device prototype suite',
+    'On-device creator suite',
     [
       'Image LSB watermarking',
       'Audio WAV watermarking',
       'Video + PDF structural fingerprints',
+      'Trace radar + account-bound claims',
     ]
   ),
   (
     'In progress',
     true,
-    'Ownership verification APIs',
+    'Social resilience & Trace',
     [
-      'Server-side registration',
-      'Cross-device verification',
-      'Creator identity binding',
+      'Share-intent first workflows',
+      'Watchlist digests',
+      'Clearer platform-strip messaging',
     ]
   ),
   (
-    'Planned',
+    'Research roadmap',
     false,
-    'Hardening & research',
+    'Optional cloud later',
     [
-      'Anti-tamper resilience',
-      'Robustness benchmarking',
-      'Production verification API',
+      'Optional claim registry',
+      'Cross-device sync (optional)',
+      'Stronger anti-recompress marks',
     ]
   ),
 ];
@@ -611,17 +612,17 @@ class _Architecture extends StatelessWidget {
   const _Architecture();
 
   static const _nodes = [
-    ('Client', 'Upload & verify'),
-    ('FastAPI Backend', 'REST API layer'),
-    ('Watermark Engine', 'Processing core'),
-    ('Database', 'Ownership records'),
+    ('Signata app', 'Protect · Trace · Verify'),
+    ('On-device crypto', 'Account HMAC claim keys'),
+    ('Fingerprint engines', 'Image · audio · video · PDF'),
+    ('Local stores', 'History · radar · claims'),
   ];
 
   static const _engine = [
-    'Image Processing',
-    'Audio Processing',
-    'PDF Fingerprinting',
-    'Verification System',
+    'Image LSB watermark',
+    'Audio WAV fingerprint',
+    'Video / PDF structure marks',
+    'Trace URL + share ingress',
   ];
 
   @override
@@ -631,10 +632,10 @@ class _Architecture extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SectionHeading(
-          tag: 'Planned architecture',
-          title: 'A layered watermarking pipeline',
+          tag: 'Architecture',
+          title: 'Built to run on your device',
           desc:
-              'From client request to encrypted fingerprint to verified ownership record.',
+              'Fingerprints, claim keys, and Trace history stay local. Optional remote registry is off unless you configure it.',
         ),
         const SizedBox(height: 24),
         for (var i = 0; i < _nodes.length; i++) ...[

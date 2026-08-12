@@ -6,8 +6,8 @@
 /// removes both limits. Counters and the premium flag are stored locally in
 /// SharedPreferences, keyed by user id.
 ///
-/// The mock [BillingGateway] and [RewardedAdGateway] are the seams to swap in
-/// real Play Billing / AdMob later without touching the gating logic.
+/// Call [check] before work and [commit] only after success so cancel/fail
+/// does not burn quota. [reserve] remains as check+commit for tests.
 library;
 
 import 'dart:convert';
@@ -72,7 +72,10 @@ class UsageEntitlements {
   static final instance = UsageEntitlements._();
 
   static const freeProtectsPerDay = 2;
-  static const freeTracePerDay = 1;
+  static const freeTracePerDay = 3;
+
+  /// Demo billing is always local until Play Billing is wired.
+  static const bool isDemoBilling = true;
 
   final billing = const BillingGateway();
   final rewardedAd = const RewardedAdGateway();
@@ -143,9 +146,9 @@ class UsageEntitlements {
     return data['premium'] == true;
   }
 
-  /// Consumes one attempt of [kind] if available. Premium always allows
-  /// without consuming.
-  Future<GateResult> reserve(UsageKind kind) async {
+  /// Returns whether [units] attempts of [kind] are available (no consume).
+  Future<GateResult> check(UsageKind kind, {int units = 1}) async {
+    if (units < 1) return GateResult.allowed;
     final prefs = await SharedPreferences.getInstance();
     final data = await _load(prefs);
     if (data['premium'] == true) return GateResult.allowed;
@@ -155,17 +158,41 @@ class UsageEntitlements {
     final limit = kind == UsageKind.protect
         ? freeProtectsPerDay + c.protectBonus
         : freeTracePerDay + c.traceBonus;
-    if (used >= limit) return GateResult.blocked;
+    if (used + units > limit) return GateResult.blocked;
+    return GateResult.allowed;
+  }
+
+  /// Consumes [units] attempts after successful work. Premium is a no-op.
+  Future<GateResult> commit(UsageKind kind, {int units = 1}) async {
+    if (units < 1) return GateResult.allowed;
+    final prefs = await SharedPreferences.getInstance();
+    final data = await _load(prefs);
+    if (data['premium'] == true) return GateResult.allowed;
+
+    final c = _todayCounters(data);
+    final used = kind == UsageKind.protect ? c.protect : c.trace;
+    final limit = kind == UsageKind.protect
+        ? freeProtectsPerDay + c.protectBonus
+        : freeTracePerDay + c.traceBonus;
+    if (used + units > limit) return GateResult.blocked;
 
     await _save(prefs, {
       'premium': data['premium'] == true,
       'day': todayKey(),
-      'protect': c.protect + (kind == UsageKind.protect ? 1 : 0),
-      'trace': c.trace + (kind == UsageKind.trace ? 1 : 0),
+      'protect': c.protect + (kind == UsageKind.protect ? units : 0),
+      'trace': c.trace + (kind == UsageKind.trace ? units : 0),
       'protectBonus': c.protectBonus,
       'traceBonus': c.traceBonus,
     });
     return GateResult.allowed;
+  }
+
+  /// Check + commit in one step (tests / simple callers).
+  Future<GateResult> reserve(UsageKind kind, {int units = 1}) async {
+    if (await check(kind, units: units) == GateResult.blocked) {
+      return GateResult.blocked;
+    }
+    return commit(kind, units: units);
   }
 
   Future<GateResult> reserveProtect() => reserve(UsageKind.protect);
@@ -199,5 +226,10 @@ class UsageEntitlements {
     final data = await _load(prefs);
     data['premium'] = false;
     await _save(prefs, data);
+  }
+
+  Future<void> clearForUser(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('signata.usage.$id');
   }
 }

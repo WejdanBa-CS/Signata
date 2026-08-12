@@ -73,7 +73,7 @@ class HistoryScreenState extends State<HistoryScreen> {
             children: [
               const EmLogo(size: 44, showWordmark: false),
               const SizedBox(height: 20),
-              Text('No verifications yet',
+              Text('No activity yet',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               const Text(

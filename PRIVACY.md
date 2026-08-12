@@ -17,9 +17,9 @@ Given Signata's nature as a digital watermarking and ownership verification plat
 
 At Signata, the security and privacy of your content are our top priorities:
 
-- **Media Protection:** The processes of embedding hidden watermarks, generating audio fingerprints, and extracting structural identifiers (SHA-256) for videos and documents are performed locally on your device (on-device) whenever possible.
-- We do not upload, store, or keep copies of your original files (images, audio, video, or PDFs) on our servers without your explicit consent, ensuring you retain exclusive ownership of your content.
-- The data stored on our servers is strictly limited to encrypted fingerprints and ownership logs associated with your account, enabling you to verify content authenticity on demand.
+- **Media Protection:** Embedding watermarks, audio fingerprints, and structural identifiers for videos and documents runs locally on your device.
+- By default Signata does not upload your original media or claim keys to Signata servers. History, Trace radar, and published claims stay in on-device storage scoped to your account.
+- If you later configure an optional self-hosted claim registry, only fingerprint metadata you choose to publish may leave the device — never your original files.
 
 ## 3. How We Use Your Data
 
@@ -43,8 +43,8 @@ We implement industry-standard security protocols and advanced encryption (inclu
 
 In accordance with applicable data protection laws, you have the right to:
 
-- **Access:** View your ownership records (History) and actively tracked links (Watching) directly through your account dashboard.
-- **Deletion:** You have the right to request the complete deletion of your account. This action will permanently erase all your encrypted fingerprints and trace logs from our servers. (Note: Deleting your account will not remove the hidden watermarks already embedded in your exported files, but it will sever the link between those watermarks and your account records).
+- **Access:** View your ownership records (History) and actively tracked links (Watching) directly in the app.
+- **Deletion:** Use Account → Delete account to erase your local Signata account record, claim key, history, Trace data, and usage flags on this device. This does not remove watermarks already embedded in exported files. Email FocusMindDev@gmail.com for privacy requests beyond what the app can erase locally.
 
 ## 7. Governing Law and Policy Updates
 

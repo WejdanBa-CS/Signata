@@ -12,9 +12,9 @@ import 'claim_crypto.dart';
     case ClaimStatus.selfConsistent:
       return (
         ok: true,
-        title: 'Claim is self-consistent',
+        title: 'Legacy fingerprint (unsigned)',
         subtitle:
-            'Legacy fingerprint checks out, but it is not bound to your account key.',
+            'Structure checks out, but it is not bound to your account key.',
       );
     case ClaimStatus.foreignKey:
       return (
@@ -37,6 +37,31 @@ import 'claim_crypto.dart';
   }
 }
 
+/// Trace-specific banner — explains platform stripping when nothing is found.
+({bool ok, String title, String subtitle}) traceResultBanner({
+  required ClaimStatus status,
+  String? error,
+  String? note,
+  bool socialHost = false,
+}) {
+  if (error != null && error.isNotEmpty) {
+    return (ok: false, title: 'Could not scan URL', subtitle: error);
+  }
+  if (status == ClaimStatus.missing) {
+    return (
+      ok: false,
+      title: socialHost
+          ? 'No fingerprint on this post'
+          : 'No fingerprint found',
+      subtitle: note ??
+          (socialHost
+              ? 'Social apps often recompress media and can strip hidden marks. '
+                  'Try the original protected file or a direct media CDN link.'
+              : ClaimCrypto.describe(status)),
+    );
+  }
+  return claimBanner(status);
+}
+
 bool claimCountsAsVerified(ClaimStatus status) =>
-    status == ClaimStatus.authenticated ||
-    status == ClaimStatus.selfConsistent;
+    status == ClaimStatus.authenticated;

@@ -101,6 +101,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           reference: outcome.payload.structuralIdentifier(),
           at: DateTime.now(),
         ));
+        await commitUsage(UsageKind.protect);
       } else {
         setState(() => _workingStep = 'Extracting & verifying');
         final outcome = await verifyVideoFingerprint(bytes, claimKey: claimKey);
@@ -171,6 +172,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
     if (outcome == null) return;
     setState(() => _reportStatus = 'Sealing…');
     try {
+      final claimKey = await AccountClaimKeys.current();
       final sealed = sealReport(ReportBody(
         medium: 'video',
         subject: outcome.recovered?.document ?? _fileName ?? 'video.mp4',
@@ -186,8 +188,8 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           'structure': outcome.recovered?.structure.toJson(),
           'roundTripMs': _elapsedMs,
         },
-      ));
-      if (!verifySealedReport(sealed)) {
+      ), claimKey: claimKey);
+      if (!verifySealedReport(sealed, claimKey: claimKey)) {
         throw Exception('Seal self-check failed.');
       }
       await shareBytes(
@@ -252,8 +254,12 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _ownerController,
+                  readOnly: true,
                   decoration: const InputDecoration(
                     hintText: 'Creator or studio name',
+                    helperText:
+                        'Bound to your Signata account — cannot be spoofed for authentication.',
+                    helperMaxLines: 2,
                   ),
                 ),
                 const SizedBox(height: 16),

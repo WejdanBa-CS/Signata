@@ -16,13 +16,23 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'google_auth_config.dart';
+import 'local_data.dart';
+import 'secure_store.dart';
+import 'totp.dart';
 
 enum AuthProvider { email, google }
+
+/// Thrown when password was accepted but a TOTP code is still required.
+class TotpRequiredException implements Exception {
+  const TotpRequiredException();
+  @override
+  String toString() => 'Authenticator code required.';
+}
 
 class AuthUser {
   const AuthUser({
@@ -31,6 +41,8 @@ class AuthUser {
     required this.displayName,
     required this.provider,
     this.photoUrl,
+    this.totpEnabled = false,
+    this.emailVerified = true,
   });
 
   final String id;
@@ -38,6 +50,8 @@ class AuthUser {
   final String displayName;
   final AuthProvider provider;
   final String? photoUrl;
+  final bool totpEnabled;
+  final bool emailVerified;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -45,6 +59,8 @@ class AuthUser {
         'displayName': displayName,
         'provider': provider.name,
         'photoUrl': photoUrl,
+        'totpEnabled': totpEnabled,
+        'emailVerified': emailVerified,
       };
 
   static AuthUser fromJson(Map<String, dynamic> json) => AuthUser(
@@ -56,6 +72,21 @@ class AuthUser {
           orElse: () => AuthProvider.email,
         ),
         photoUrl: json['photoUrl'] as String?,
+        totpEnabled: json['totpEnabled'] == true,
+        // Missing key → already verified (pre-verification installs).
+        emailVerified: json.containsKey('emailVerified')
+            ? json['emailVerified'] == true
+            : true,
+      );
+
+  AuthUser copyWith({bool? totpEnabled, bool? emailVerified}) => AuthUser(
+        id: id,
+        email: email,
+        displayName: displayName,
+        provider: provider,
+        photoUrl: photoUrl,
+        totpEnabled: totpEnabled ?? this.totpEnabled,
+        emailVerified: emailVerified ?? this.emailVerified,
       );
 }
 
@@ -71,6 +102,19 @@ class AuthException implements Exception {
 class PasswordPolicy {
   static const minLength = 10;
 
+  static const _common = {
+    'password',
+    'password1',
+    'password123',
+    '1234567890',
+    'qwerty1234',
+    'letmein123',
+    'admin12345',
+    'welcome123',
+    'signata123',
+    'iloveyou12',
+  };
+
   /// Returns null when [password] is acceptable, otherwise a user-facing reason.
   static String? validate(String password) {
     if (password.length < minLength) {
@@ -84,6 +128,9 @@ class PasswordPolicy {
     }
     if (RegExp(r'^\s|\s$').hasMatch(password)) {
       return 'Password cannot start or end with a space.';
+    }
+    if (_common.contains(password.toLowerCase())) {
+      return 'Choose a less common password.';
     }
     return null;
   }
@@ -187,17 +234,13 @@ class AuthService extends ChangeNotifier {
   static const _genericCredentialError =
       'Incorrect email or password.';
 
-  final _secure = const FlutterSecureStorage(
-    aOptions: AndroidOptions(),
-    iOptions: IOSOptions(
-      accessibility: KeychainAccessibility.first_unlock_this_device,
-    ),
-  );
+  final _secure = signataSecureStorage;
   final _google = GoogleSignIn.instance;
 
   AuthUser? _user;
   bool _ready = false;
   bool _googleReady = false;
+  final _secureRandom = Random.secure();
 
   AuthUser? get user => _user;
   bool get isSignedIn => _user != null;
@@ -228,7 +271,7 @@ class AuthService extends ChangeNotifier {
       if (!_googleReady) {
         debugPrint(
           'Google Sign-In: missing Web client ID. '
-          'Paste it on the login screen, or set GOOGLE_SERVER_CLIENT_ID.',
+          'Set GOOGLE_SERVER_CLIENT_ID via --dart-define / google_oauth.env.',
         );
       }
     } catch (error) {
@@ -252,6 +295,7 @@ class AuthService extends ChangeNotifier {
   Future<void> signInWithEmail({
     required String email,
     required String password,
+    String? totpCode,
   }) async {
     final normalized = email.trim().toLowerCase();
     if (!_isValidEmail(normalized)) {
@@ -282,6 +326,19 @@ class AuthService extends ChangeNotifier {
       throw const AuthException(_genericCredentialError);
     }
 
+    final totpEnabled = record['totpEnabled'] == true;
+    final totpSecret = await _readTotpSecret(normalized, record);
+    if (totpEnabled && totpSecret != null && totpSecret.isNotEmpty) {
+      final code = totpCode?.trim() ?? '';
+      if (code.isEmpty) {
+        throw const TotpRequiredException();
+      }
+      if (!Totp.verify(totpSecret, code)) {
+        await _registerFailedAttempt(normalized);
+        throw const AuthException('Incorrect authenticator code.');
+      }
+    }
+
     await _clearFailedAttempts(normalized);
 
     // Upgrade legacy hashes on successful sign-in.
@@ -303,7 +360,110 @@ class AuthService extends ChangeNotifier {
       displayName:
           record['displayName'] as String? ?? normalized.split('@').first,
       provider: AuthProvider.email,
+      totpEnabled: totpEnabled,
+      emailVerified: record.containsKey('emailVerified')
+          ? record['emailVerified'] == true
+          : true,
     ));
+  }
+
+  /// Starts 2FA enrollment; returns secret + otpauth URI. Confirm with [confirmTotpSetup].
+  Future<({String secret, String otpauth})> beginTotpSetup() async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) {
+      throw const AuthException('2FA is available for email accounts only.');
+    }
+    final secret = Totp.generateSecret();
+    final otpauth = Totp.otpauthUri(secret: secret, accountName: user.email);
+    await _secure.write(key: _pendingTotpKey(user.email), value: secret);
+    return (secret: secret, otpauth: otpauth);
+  }
+
+  Future<void> confirmTotpSetup(String code) async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) {
+      throw const AuthException('2FA is available for email accounts only.');
+    }
+    final secret = await _secure.read(key: _pendingTotpKey(user.email));
+    if (secret == null || secret.isEmpty) {
+      throw const AuthException('Start 2FA setup again.');
+    }
+    if (!Totp.verify(secret, code)) {
+      throw const AuthException('Incorrect authenticator code. Try again.');
+    }
+    final users = await _loadUsers();
+    final record = users[user.email];
+    if (record == null) {
+      throw const AuthException('Account not found.');
+    }
+    users[user.email] = {
+      ...record,
+      'totpEnabled': true,
+    };
+    await _saveUsers(users);
+    await _secure.write(key: _totpSecretKey(user.email), value: secret);
+    await _secure.delete(key: _pendingTotpKey(user.email));
+    await _setSession(user.copyWith(totpEnabled: true));
+  }
+
+  Future<void> disableTotp({
+    required String password,
+    required String totpCode,
+  }) async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) {
+      throw const AuthException('2FA is available for email accounts only.');
+    }
+    final users = await _loadUsers();
+    final record = users[user.email];
+    if (record == null) {
+      throw const AuthException('Account not found.');
+    }
+    final algo = (record['algo'] as String?) ?? PasswordHasher.algoLegacySha256;
+    final passwordOk = PasswordHasher.verify(
+      password: password,
+      saltBase64: record['salt'] as String,
+      expectedHash: record['hash'] as String,
+      algorithm: algo,
+    );
+    if (!passwordOk) {
+      throw const AuthException('Incorrect password.');
+    }
+    final secret = await _readTotpSecret(user.email, record);
+    if (secret == null || !Totp.verify(secret, totpCode)) {
+      throw const AuthException('Incorrect authenticator code.');
+    }
+    final updated = Map<String, dynamic>.from(record)
+      ..['totpEnabled'] = false
+      ..remove('totpSecret');
+    users[user.email] = updated;
+    await _saveUsers(users);
+    await _secure.delete(key: _totpSecretKey(user.email));
+    await _secure.delete(key: _pendingTotpKey(user.email));
+    await _setSession(user.copyWith(totpEnabled: false));
+  }
+
+  String _pendingTotpKey(String email) =>
+      'signata_totp_pending_${email.toLowerCase()}';
+
+  String _totpSecretKey(String email) =>
+      'signata_totp_secret_${email.toLowerCase()}';
+
+  Future<String?> _readTotpSecret(
+    String email,
+    Map<String, dynamic> record,
+  ) async {
+    final isolated = await _secure.read(key: _totpSecretKey(email));
+    if (isolated != null && isolated.isNotEmpty) return isolated;
+    // Migrate secrets that were previously stored inside the users blob.
+    final legacy = record['totpSecret'] as String?;
+    if (legacy == null || legacy.isEmpty) return null;
+    await _secure.write(key: _totpSecretKey(email), value: legacy);
+    final cleaned = Map<String, dynamic>.from(record)..remove('totpSecret');
+    final users = await _loadUsers();
+    users[email] = cleaned;
+    await _saveUsers(users);
+    return legacy;
   }
 
   Future<void> signUpWithEmail({
@@ -346,6 +506,7 @@ class AuthService extends ChangeNotifier {
       'iterations': PasswordHasher.iterations,
       'hash': PasswordHasher.hash(password, salt),
       'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'emailVerified': false,
     };
     await _saveUsers(users);
     await _clearFailedAttempts(normalized);
@@ -355,15 +516,145 @@ class AuthService extends ChangeNotifier {
       email: normalized,
       displayName: display,
       provider: AuthProvider.email,
+      emailVerified: false,
     ));
+    await sendEmailVerification();
+  }
+
+  /// Creates a local activation code and optionally opens a mailto draft so the
+  /// user can save it. Signata does not operate a mail server — this proves
+  /// the user can access a mail app / copy the on-device code, not remote
+  /// ownership of the inbox.
+  ///
+  /// Returns the plaintext code so the UI can show it if mailto fails.
+  Future<String> sendEmailVerification() async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) {
+      throw const AuthException('Email activation is for email accounts.');
+    }
+    if (user.emailVerified) return '';
+
+    final now = DateTime.now().toUtc();
+    final raw = await _secure.read(key: _emailVerifyMetaKey(user.email));
+    if (raw != null) {
+      try {
+        final meta = jsonDecode(raw) as Map<String, dynamic>;
+        final lastMs = meta['sentAt'] as int?;
+        if (lastMs != null) {
+          final elapsed =
+              now.difference(DateTime.fromMillisecondsSinceEpoch(lastMs, isUtc: true));
+          if (elapsed.inSeconds < 45) {
+            throw AuthException(
+              'Wait ${45 - elapsed.inSeconds}s before requesting a new code.',
+            );
+          }
+        }
+      } catch (error) {
+        if (error is AuthException) rethrow;
+      }
+    }
+
+    final code =
+        List.generate(6, (_) => _secureRandom.nextInt(10)).join();
+    final salt = _randomSalt();
+    final hash = sha256.convert(utf8.encode('$salt|$code')).toString();
+    final expires = now.add(const Duration(minutes: 15));
+    await _secure.write(
+      key: _emailVerifyKey(user.email),
+      value: jsonEncode({
+        'salt': salt,
+        'hash': hash,
+        'expires': expires.millisecondsSinceEpoch,
+      }),
+    );
+    await _secure.write(
+      key: _emailVerifyMetaKey(user.email),
+      value: jsonEncode({'sentAt': now.millisecondsSinceEpoch}),
+    );
+
+    final mailUri = Uri(
+      scheme: 'mailto',
+      path: user.email,
+      query: _encodeMailQuery(
+        subject: 'Signata account activation code',
+        body:
+            'Your Signata activation code is: $code\n\n'
+            'This code was generated on your device (Signata does not send email). '
+            'It expires in 15 minutes.\n'
+            'Keep this code private.',
+      ),
+    );
+    try {
+      await launchUrl(mailUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // UI can display the returned code when mailto is unavailable.
+    }
+    if (kDebugMode) {
+      debugPrint('Signata activation code for ${user.email}: $code');
+    }
+    return code;
+  }
+
+  Future<void> confirmEmailVerification(String code) async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) {
+      throw const AuthException('Email activation is for email accounts.');
+    }
+    await _assertNotLockedOut(user.email);
+    final cleaned = code.replaceAll(RegExp(r'\s'), '');
+    if (!RegExp(r'^\d{6}$').hasMatch(cleaned)) {
+      throw const AuthException('Enter the 6-digit activation code.');
+    }
+
+    final raw = await _secure.read(key: _emailVerifyKey(user.email));
+    if (raw == null || raw.isEmpty) {
+      throw const AuthException('Request a new activation code.');
+    }
+    final payload = jsonDecode(raw) as Map<String, dynamic>;
+    final expiresMs = payload['expires'] as int?;
+    if (expiresMs == null ||
+        DateTime.now().toUtc().isAfter(
+              DateTime.fromMillisecondsSinceEpoch(expiresMs, isUtc: true),
+            )) {
+      await _secure.delete(key: _emailVerifyKey(user.email));
+      throw const AuthException('That code expired. Tap Resend for a new one.');
+    }
+    final salt = payload['salt'] as String? ?? '';
+    final expected = payload['hash'] as String? ?? '';
+    final computed = sha256.convert(utf8.encode('$salt|$cleaned')).toString();
+    if (!PasswordHasher.constantTimeEquals(computed, expected)) {
+      await _registerFailedAttempt(user.email);
+      throw const AuthException('Incorrect activation code.');
+    }
+
+    final users = await _loadUsers();
+    final record = users[user.email];
+    if (record == null) {
+      throw const AuthException('Account not found.');
+    }
+    users[user.email] = {...record, 'emailVerified': true};
+    await _saveUsers(users);
+    await _secure.delete(key: _emailVerifyKey(user.email));
+    await _secure.delete(key: _emailVerifyMetaKey(user.email));
+    await _clearFailedAttempts(user.email);
+    await _setSession(user.copyWith(emailVerified: true));
+  }
+
+  String _emailVerifyKey(String email) =>
+      'signata_email_verify_${email.toLowerCase()}';
+
+  String _emailVerifyMetaKey(String email) =>
+      'signata_email_verify_meta_${email.toLowerCase()}';
+
+  String _encodeMailQuery({required String subject, required String body}) {
+    // mailto query must be encoded manually for broad client support.
+    return 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}';
   }
 
   Future<void> signInWithGoogle() async {
     if (!GoogleAuthConfig.hasServerClientId) {
       throw const AuthException(
-        'Google setup needed. Tap “Set up Google Sign-In”, paste your Web '
-        'client ID, and make sure an Android OAuth client exists for '
-        'package app.signata.signata.',
+        'Google Sign-In is not configured for this build. Use email instead.',
       );
     }
     if (!_googleReady) {
@@ -395,9 +686,8 @@ class AuthService extends ChangeNotifier {
         throw const AuthException('Google sign-in was cancelled.');
       }
       throw AuthException(
-        'Google sign-in failed. Confirm the Web client ID is set, and that '
-        'an Android OAuth client exists for package app.signata.signata with '
-        'your debug/release SHA-1. (${error.description ?? error.code.name})',
+        'Google sign-in failed. Try again, or use email instead. '
+        '(${error.description ?? error.code.name})',
       );
     } catch (error) {
       if (error is AuthException) rethrow;
@@ -418,6 +708,53 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Deletes this on-device account and erases local Signata data for it.
+  Future<void> deleteAccount({
+    required String password,
+    String? totpCode,
+  }) async {
+    final user = _user;
+    if (user == null) {
+      throw const AuthException('Not signed in.');
+    }
+
+    if (user.provider == AuthProvider.email) {
+      final users = await _loadUsers();
+      final record = users[user.email];
+      if (record == null) {
+        throw const AuthException('Account not found.');
+      }
+      final algo =
+          (record['algo'] as String?) ?? PasswordHasher.algoLegacySha256;
+      final ok = PasswordHasher.verify(
+        password: password,
+        saltBase64: record['salt'] as String,
+        expectedHash: record['hash'] as String,
+        algorithm: algo,
+      );
+      if (!ok) {
+        throw const AuthException('Incorrect password.');
+      }
+      if (record['totpEnabled'] == true) {
+        final secret = await _readTotpSecret(user.email, record);
+        final code = totpCode?.trim() ?? '';
+        if (secret == null || code.isEmpty || !Totp.verify(secret, code)) {
+          throw const AuthException('Incorrect authenticator code.');
+        }
+      }
+      users.remove(user.email);
+      await _saveUsers(users);
+      await _secure.delete(key: _totpSecretKey(user.email));
+      await _secure.delete(key: _pendingTotpKey(user.email));
+      await _secure.delete(key: _emailVerifyKey(user.email));
+      await _secure.delete(key: _emailVerifyMetaKey(user.email));
+      await _clearFailedAttempts(user.email);
+    }
+
+    await wipeLocalUserData(user: user);
+    await signOut();
+  }
+
   Future<void> _restoreSession() async {
     // Prefer encrypted session; migrate any leftover SharedPreferences session.
     String? raw = await _secure.read(key: _sessionKey);
@@ -428,7 +765,7 @@ class AuthService extends ChangeNotifier {
         try {
           final user =
               AuthUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-          await _setSession(user);
+          await _setSession(await _rehydrateUser(user));
           await prefs.remove(_legacySessionKey);
           return;
         } catch (_) {
@@ -451,10 +788,43 @@ class AuthService extends ChangeNotifier {
         await _secure.delete(key: _sessionKey);
         return;
       }
-      _user = AuthUser.fromJson(Map<String, dynamic>.from(userJson));
+      final issuedAt = DateTime.tryParse(decoded['issuedAt'] as String? ?? '');
+      if (issuedAt != null &&
+          DateTime.now().toUtc().difference(issuedAt) > const Duration(days: 90)) {
+        await _secure.delete(key: _sessionKey);
+        return;
+      }
+      final sessionUser =
+          AuthUser.fromJson(Map<String, dynamic>.from(userJson));
+      _user = await _rehydrateUser(sessionUser);
     } catch (_) {
       await _secure.delete(key: _sessionKey);
     }
+  }
+
+  /// Re-read authoritative flags from the users DB (don't trust session alone).
+  Future<AuthUser> _rehydrateUser(AuthUser sessionUser) async {
+    if (sessionUser.provider != AuthProvider.email) return sessionUser;
+    final users = await _loadUsers();
+    final record = users[sessionUser.email];
+    if (record == null) {
+      // Stale session for a deleted account.
+      await _secure.delete(key: _sessionKey);
+      _user = null;
+      return sessionUser;
+    }
+    return AuthUser(
+      id: record['id'] as String? ?? sessionUser.id,
+      email: sessionUser.email,
+      displayName:
+          record['displayName'] as String? ?? sessionUser.displayName,
+      provider: AuthProvider.email,
+      photoUrl: sessionUser.photoUrl,
+      totpEnabled: record['totpEnabled'] == true,
+      emailVerified: record.containsKey('emailVerified')
+          ? record['emailVerified'] == true
+          : true,
+    );
   }
 
   Future<void> _setSession(AuthUser user) async {

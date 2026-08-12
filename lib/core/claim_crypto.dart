@@ -9,10 +9,10 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth.dart';
 import 'fingerprint.dart';
+import 'secure_store.dart';
 
 const String claimAlgHmac = 'hmac-sha256';
 const String claimAlgFnv16 = 'fnv16';
@@ -261,7 +261,7 @@ class ClaimCrypto {
 class AccountClaimKeys {
   AccountClaimKeys._();
 
-  static const _secure = FlutterSecureStorage();
+  static final _secure = signataSecureStorage;
 
   static String _storageKey(String userId) => 'signata_claim_key_$userId';
 
@@ -287,5 +287,16 @@ class AccountClaimKeys {
     final user = AuthService.instance.user;
     if (user == null) return null;
     return forUser(user.id);
+  }
+
+  /// Exports the raw claim key (base64url) for an offline recovery kit.
+  static Future<String?> exportCurrentKeyBase64() async {
+    final user = AuthService.instance.user;
+    if (user == null) return null;
+    return _secure.read(key: _storageKey(user.id));
+  }
+
+  static Future<void> deleteForUser(String userId) async {
+    await _secure.delete(key: _storageKey(userId));
   }
 }

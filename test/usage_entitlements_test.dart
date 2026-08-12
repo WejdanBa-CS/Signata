@@ -15,26 +15,39 @@ void main() {
     entitlements.userId = () => 'test_user';
   });
 
-  test('fresh user gets 2 protects and 1 trace, then blocked', () async {
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
+  test('fresh user gets freeProtects and freeTrace, then blocked', () async {
+    for (var i = 0; i < UsageEntitlements.freeProtectsPerDay; i++) {
+      expect(await entitlements.reserveProtect(), GateResult.allowed);
+    }
     expect(await entitlements.reserveProtect(), GateResult.blocked);
 
-    expect(await entitlements.reserveTrace(), GateResult.allowed);
+    for (var i = 0; i < UsageEntitlements.freeTracePerDay; i++) {
+      expect(await entitlements.reserveTrace(), GateResult.allowed);
+    }
     expect(await entitlements.reserveTrace(), GateResult.blocked);
   });
 
+  test('check does not consume; commit does', () async {
+    expect(await entitlements.check(UsageKind.protect), GateResult.allowed);
+    expect(await entitlements.check(UsageKind.protect), GateResult.allowed);
+    expect(await entitlements.commit(UsageKind.protect), GateResult.allowed);
+    final snap = await entitlements.snapshot();
+    expect(snap.protectUsed, 1);
+  });
+
   test('ad bonus grants one extra attempt of that kind only', () async {
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
+    for (var i = 0; i < UsageEntitlements.freeProtectsPerDay; i++) {
+      expect(await entitlements.reserveProtect(), GateResult.allowed);
+    }
     expect(await entitlements.reserveProtect(), GateResult.blocked);
 
     await entitlements.grantAdBonus(kind: UsageKind.protect);
     expect(await entitlements.reserveProtect(), GateResult.allowed);
     expect(await entitlements.reserveProtect(), GateResult.blocked);
 
-    // Protect bonus must not unlock trace.
-    expect(await entitlements.reserveTrace(), GateResult.allowed);
+    for (var i = 0; i < UsageEntitlements.freeTracePerDay; i++) {
+      expect(await entitlements.reserveTrace(), GateResult.allowed);
+    }
     expect(await entitlements.reserveTrace(), GateResult.blocked);
     await entitlements.grantAdBonus(kind: UsageKind.trace);
     expect(await entitlements.reserveTrace(), GateResult.allowed);
@@ -53,25 +66,23 @@ void main() {
 
   test('day rollover resets counters and ad bonuses', () async {
     await entitlements.grantAdBonus(kind: UsageKind.protect);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
+    for (var i = 0; i < UsageEntitlements.freeProtectsPerDay + 1; i++) {
+      expect(await entitlements.reserveProtect(), GateResult.allowed);
+    }
     expect(await entitlements.reserveProtect(), GateResult.blocked);
     expect(await entitlements.reserveTrace(), GateResult.allowed);
-    expect(await entitlements.reserveTrace(), GateResult.blocked);
 
     day = '2026-08-11';
     final snap = await entitlements.snapshot();
     expect(snap.protectUsed, 0);
     expect(snap.protectLimit, UsageEntitlements.freeProtectsPerDay);
     expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.allowed);
-    expect(await entitlements.reserveProtect(), GateResult.blocked);
-    expect(await entitlements.reserveTrace(), GateResult.allowed);
   });
 
   test('quotas are per user id', () async {
-    expect(await entitlements.reserveTrace(), GateResult.allowed);
+    for (var i = 0; i < UsageEntitlements.freeTracePerDay; i++) {
+      expect(await entitlements.reserveTrace(), GateResult.allowed);
+    }
     expect(await entitlements.reserveTrace(), GateResult.blocked);
 
     entitlements.userId = () => 'other_user';
@@ -87,13 +98,15 @@ void main() {
 
   test('snapshot reports remaining correctly', () async {
     var snap = await entitlements.snapshot();
-    expect(snap.protectRemaining, 2);
-    expect(snap.traceRemaining, 1);
+    expect(snap.protectRemaining, UsageEntitlements.freeProtectsPerDay);
+    expect(snap.traceRemaining, UsageEntitlements.freeTracePerDay);
 
     await entitlements.reserveProtect();
     snap = await entitlements.snapshot();
-    expect(snap.protectRemaining, 1);
-    expect(snap.remainingFor(UsageKind.protect), 1);
-    expect(snap.remainingFor(UsageKind.trace), 1);
+    expect(snap.protectRemaining, UsageEntitlements.freeProtectsPerDay - 1);
+    expect(snap.remainingFor(UsageKind.protect),
+        UsageEntitlements.freeProtectsPerDay - 1);
+    expect(snap.remainingFor(UsageKind.trace),
+        UsageEntitlements.freeTracePerDay);
   });
 }
