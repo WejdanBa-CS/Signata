@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/claim_crypto.dart';
 import '../core/claim_status_ui.dart';
 import '../core/history.dart';
+import '../core/onboarding.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
 import '../core/trace_models.dart';
@@ -102,6 +103,7 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
           at: DateTime.now(),
         ));
         await commitUsage(UsageKind.protect);
+        await OnboardingFlags.instance.markProtectedOnce();
       } else {
         setState(() => _workingStep = 'Extracting & verifying');
         final outcome = await verifyVideoFingerprint(bytes, claimKey: claimKey);
@@ -269,7 +271,9 @@ class _VideoToolScreenState extends State<VideoToolScreen> {
                 title: _mode == VideoMode.embed
                     ? 'Choose a video to fingerprint'
                     : 'Choose a video to check',
-                hint: 'MP4 / MOV / M4V — processed locally',
+                hint: _mode == VideoMode.embed
+                    ? 'MP4 / MOV / M4V — re-encoding after protect can drop the mark'
+                    : 'Check the original protected file when possible',
                 buttonLabel: 'Choose video',
                 onPick: _pickAndRun,
                 fileName: _fileName,

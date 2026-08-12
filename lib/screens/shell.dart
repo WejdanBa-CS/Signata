@@ -1,7 +1,14 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
+import '../core/local_data.dart';
+import '../core/onboarding.dart';
 import '../core/share_ingress.dart';
+import '../core/share_utils.dart';
+import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import 'account_screen.dart';
 import 'audio_tool_screen.dart';
@@ -26,17 +33,64 @@ class _AppShellState extends State<AppShell> {
   final _historyKey = GlobalKey<HistoryScreenState>();
   List<SharedIngressFile> _pendingShared = const [];
   int _traceNonce = 0;
+  int _checklistNonce = 0;
+  bool _recoveryPromptScheduled = false;
 
   @override
   void initState() {
     super.initState();
     ShareIngress.instance.attach(_onShared);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptRecovery());
   }
 
   @override
   void dispose() {
     ShareIngress.instance.detach();
     super.dispose();
+  }
+
+  Future<void> _maybePromptRecovery() async {
+    if (_recoveryPromptScheduled || !mounted) return;
+    _recoveryPromptScheduled = true;
+    final should = await OnboardingFlags.instance.shouldPromptRecoveryExport();
+    if (!should || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Save a recovery kit'),
+        content: const Text(
+          'Signata accounts and claim keys stay on this device. Export a '
+          'recovery kit now so you can prove old fingerprints after a reinstall.',
+          style: TextStyle(height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await OnboardingFlags.instance.markRecoveryHandled();
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                final kit = await buildRecoveryKit();
+                await shareBytes(
+                  bytes: Uint8List.fromList(utf8.encode(kit)),
+                  fileName: 'signata-recovery-kit.txt',
+                  mimeType: 'text/plain',
+                  text: 'Signata recovery kit — keep offline and private.',
+                );
+                await OnboardingFlags.instance.markRecoveryExported();
+              } catch (_) {}
+            },
+            child: const Text('Export now'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onShared(List<SharedIngressFile> files) {
@@ -62,6 +116,7 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _index = index;
       _activeTool = null;
+      if (index == 0) _checklistNonce++;
     });
     if (index == 2) _historyKey.currentState?.refresh();
   }
@@ -115,6 +170,7 @@ class _AppShellState extends State<AppShell> {
                 onPressed: () => setState(() {
                       _activeTool = null;
                       _pendingShared = const [];
+                      _checklistNonce++;
                     }),
               )
             : null,
@@ -128,9 +184,16 @@ class _AppShellState extends State<AppShell> {
           : IndexedStack(
               index: _index,
               children: [
-                HomeScreen(onOpenTool: _openTool),
+                HomeScreen(
+                  onOpenTool: _openTool,
+                  onOpenAccount: () => _openTab(3),
+                  checklistNonce: _checklistNonce,
+                ),
                 ToolsHubScreen(onOpenTool: _openTool),
-                HistoryScreen(key: _historyKey),
+                HistoryScreen(
+                  key: _historyKey,
+                  onOpenTools: () => _openTab(1),
+                ),
                 const AccountScreen(),
               ],
             ),

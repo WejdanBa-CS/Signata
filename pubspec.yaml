@@ -2,7 +2,7 @@ name: signata
 description: "Signata — invisible ownership, verifiable authenticity. Digital watermarking for images, audio, video, and PDFs."
 publish_to: 'none'
 
-version: 1.2.3+9
+version: 1.2.4+10
 
 environment:
   sdk: ^3.12.2
@@ -24,6 +24,7 @@ dependencies:
   http: ^1.4.0
   url_launcher: ^6.3.2
   receive_sharing_intent: ^1.8.1
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

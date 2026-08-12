@@ -10,6 +10,7 @@ import '../core/claim_crypto.dart';
 import '../core/claim_registry.dart';
 import '../core/claim_status_ui.dart';
 import '../core/network_reachability.dart';
+import '../core/onboarding.dart';
 import '../core/share_ingress.dart';
 import '../core/share_utils.dart';
 import '../core/social_platforms.dart';
@@ -211,6 +212,9 @@ class _TraceScreenState extends State<TraceScreen>
         );
         results.add(result);
         if (result.sighting.error == null) successes++;
+      }
+      if (successes > 0) {
+        await OnboardingFlags.instance.markTracedOnce();
       }
       if (countTowardQuota && successes > 0) {
         await commitUsage(UsageKind.trace, units: successes);
@@ -452,6 +456,7 @@ class _TraceScreenState extends State<TraceScreen>
       }
       if (successes > 0) {
         await commitUsage(UsageKind.trace, units: successes);
+        await OnboardingFlags.instance.markTracedOnce();
       }
       if (!mounted) return;
       setState(() {
@@ -536,6 +541,7 @@ class _TraceScreenState extends State<TraceScreen>
       if (!mounted) return;
       if (items.isNotEmpty) {
         await commitUsage(UsageKind.protect, units: items.length);
+        await OnboardingFlags.instance.markProtectedOnce();
       }
       setState(() {
         _protected = items;

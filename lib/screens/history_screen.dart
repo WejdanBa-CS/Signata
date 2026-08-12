@@ -5,7 +5,9 @@ import '../theme.dart';
 import '../widgets/em_widgets.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({super.key, this.onOpenTools});
+
+  final VoidCallback? onOpenTools;
 
   @override
   State<HistoryScreen> createState() => HistoryScreenState();
@@ -84,6 +86,13 @@ class HistoryScreenState extends State<HistoryScreen> {
                     height: 1.5,
                     color: EmColors.mutedForeground),
               ),
+              if (widget.onOpenTools != null) ...[
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: widget.onOpenTools,
+                  child: const Text('Open Tools'),
+                ),
+              ],
             ],
           ),
         ),

@@ -7,6 +7,7 @@ import '../core/audio_watermark.dart';
 import '../core/claim_crypto.dart';
 import '../core/claim_status_ui.dart';
 import '../core/history.dart';
+import '../core/onboarding.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
 import '../core/trace_models.dart';
@@ -104,6 +105,7 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
           at: DateTime.now(),
         ));
         await commitUsage(UsageKind.protect);
+        await OnboardingFlags.instance.markProtectedOnce();
       } else {
         setState(() => _workingStep = 'Scanning audio samples');
         final outcome = await extractAudioWatermark(bytes, claimKey: claimKey);
@@ -267,7 +269,9 @@ class _AudioToolScreenState extends State<AudioToolScreen> {
                 title: _mode == AudioMode.embed
                     ? 'Choose a WAV to protect'
                     : 'Choose a WAV to check',
-                hint: '16-bit PCM WAV — processed locally',
+                hint: _mode == AudioMode.embed
+                    ? '16-bit PCM WAV only — MP3/AAC strip LSB marks'
+                    : '16-bit PCM WAV carrying a Signata mark',
                 buttonLabel: 'Choose audio',
                 onPick: _pickAndRun,
                 fileName: _fileName,
