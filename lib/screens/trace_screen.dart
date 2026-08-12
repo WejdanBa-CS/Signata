@@ -9,6 +9,7 @@ import '../core/auth.dart';
 import '../core/claim_crypto.dart';
 import '../core/claim_registry.dart';
 import '../core/claim_status_ui.dart';
+import '../core/network_reachability.dart';
 import '../core/share_ingress.dart';
 import '../core/share_utils.dart';
 import '../core/social_platforms.dart';
@@ -34,7 +35,7 @@ class TraceScreen extends StatefulWidget {
 }
 
 class _TraceScreenState extends State<TraceScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _urlController = TextEditingController();
   late final AnimationController _radar;
 
@@ -48,27 +49,58 @@ class _TraceScreenState extends State<TraceScreen>
   List<PublishedClaim> _claims = const [];
   List<WatchTarget> _watch = const [];
   List<TraceSighting> _sightings = const [];
+  bool _didAutoRescan = false;
+  List<TraceScanResult>? _batchResults;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _radar = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
-    _reload();
-    if (widget.initialSharedFiles.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _ingestShared(widget.initialSharedFiles);
-      });
+    _bootstrap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (!_radar.isAnimating) _radar.repeat();
+    } else {
+      _radar.stop();
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _radar.dispose();
     _urlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await _reload();
+    if (!mounted) return;
+    if (widget.initialSharedFiles.isNotEmpty) {
+      await _ingestShared(widget.initialSharedFiles);
+      return;
+    }
+    if (!_didAutoRescan && _watch.isNotEmpty) {
+      _didAutoRescan = true;
+      final online = await hasNetworkReachability();
+      if (!online) {
+        if (!mounted) return;
+        setState(() => _error =
+            'Offline — watchlist auto-check skipped. Rescan when you have a connection.');
+        return;
+      }
+      final due = await TraceStore.instance.shouldAutoRescan();
+      if (!due) return;
+      await _rescanAll(showDigest: true);
+      await TraceStore.instance.markAutoRescanDone();
+    }
   }
 
   Future<void> _reload() async {
@@ -83,31 +115,96 @@ class _TraceScreenState extends State<TraceScreen>
     });
   }
 
-  Future<void> _scan({String? url}) async {
-    final target = (url ?? _urlController.text).trim();
-    final allowed = await ensureUsage(context, UsageKind.trace);
-    if (!allowed || !mounted) return;
+  /// Split pasted text into http(s) URLs (whitespace, commas, newlines).
+  List<String> _parseUrls(String raw) {
+    final parts = raw
+        .split(RegExp(r'[\s,;]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final urls = <String>[];
+    for (final part in parts) {
+      var candidate = part;
+      if (!candidate.contains('://') &&
+          (candidate.startsWith('www.') || candidate.contains('.'))) {
+        candidate = 'https://$candidate';
+      }
+      final uri = Uri.tryParse(candidate);
+      if (uri != null &&
+          (uri.scheme == 'http' || uri.scheme == 'https') &&
+          uri.host.isNotEmpty) {
+        urls.add(candidate);
+      }
+    }
+    return urls.toSet().toList();
+  }
+
+  Future<void> _scan({
+    String? url,
+    bool countTowardQuota = true,
+  }) async {
+    final raw = url ?? _urlController.text;
+    final targets = _parseUrls(raw);
+    if (targets.isEmpty) {
+      setState(() => _error = 'Paste one or more http(s) links to scan.');
+      return;
+    }
+    if (countTowardQuota) {
+      final allowed =
+          await ensureUsage(context, UsageKind.trace, units: targets.length);
+      if (!allowed || !mounted) return;
+    }
     setState(() {
       _busy = true;
       _error = null;
-      _status = 'Sweeping the open web…';
+      _status = targets.length == 1
+          ? 'Sweeping the open web…'
+          : 'Scanning ${targets.length} links…';
       _lastResult = null;
+      _batchResults = null;
     });
     try {
       final key = await AccountClaimKeys.current();
-      final result = await UrlTracer.instance.scanUrl(
-        target,
-        claimKey: key,
-        addToWatchlist: _watchAfterScan,
-      );
+      final results = <TraceScanResult>[];
+      var successes = 0;
+      for (var i = 0; i < targets.length; i++) {
+        if (!mounted) return;
+        if (targets.length > 1) {
+          setState(() => _status = 'Scanning ${i + 1}/${targets.length}…');
+        }
+        final result = await UrlTracer.instance.scanUrl(
+          targets[i],
+          claimKey: key,
+          addToWatchlist: _watchAfterScan,
+        );
+        results.add(result);
+        if (result.sighting.error == null) successes++;
+      }
+      if (countTowardQuota && successes > 0) {
+        await commitUsage(UsageKind.trace, units: successes);
+      }
       if (!mounted) return;
       setState(() {
-        _lastResult = result;
+        _lastResult = results.last;
+        _batchResults = results.length > 1 ? results : null;
         _status = null;
-        final platform = SocialPlatformInfo.fromUrl(target);
+        final platform = SocialPlatformInfo.fromUrl(targets.first);
         if (platform != null) _selectedPlatform = platform;
+        if (targets.length > 1) {
+          _urlController.text = targets.join('\n');
+        }
       });
       await _reload();
+      if (mounted && results.length > 1) {
+        final hits = results.where((r) => r.sighting.found).length;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Batch done: $hits/${results.length} with fingerprints.',
+            ),
+          ),
+        );
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() =>
@@ -122,18 +219,56 @@ class _TraceScreenState extends State<TraceScreen>
     }
   }
 
-  Future<void> _rescanAll() async {
-    final allowed = await ensureUsage(context, UsageKind.trace);
-    if (!allowed || !mounted) return;
+  Future<void> _rescanAll({bool showDigest = false}) async {
+    if (_watch.isEmpty) return;
+    final priorFound = <String, bool>{};
+    for (final s in _sightings) {
+      priorFound.putIfAbsent(s.url, () => s.found);
+    }
     setState(() {
       _busy = true;
       _error = null;
-      _status = 'Rescanning watchlist…';
+      _status = showDigest
+          ? 'Checking watchlist for changes…'
+          : 'Rescanning watchlist…';
     });
     try {
       final key = await AccountClaimKeys.current();
       await UrlTracer.instance.scanWatchlist(claimKey: key);
       await _reload();
+      if (!mounted || !showDigest) return;
+      var newlyFound = 0;
+      var newlyMissing = 0;
+      for (final w in _watch) {
+        final prev = priorFound[w.url];
+        TraceSighting? latest;
+        for (final s in _sightings) {
+          if (s.url == w.url) {
+            latest = s;
+            break;
+          }
+        }
+        if (prev == null || latest == null) continue;
+        if (!prev && latest.found) newlyFound++;
+        if (prev && !latest.found) newlyMissing++;
+      }
+      if (!mounted) return;
+      String message;
+      if (newlyFound == 0 && newlyMissing == 0) {
+        message = 'Radar quiet — no fingerprint changes on watchlist.';
+      } else {
+        final parts = <String>[];
+        if (newlyFound > 0) {
+          parts.add('$newlyFound newly found');
+        }
+        if (newlyMissing > 0) {
+          parts.add('$newlyMissing no longer readable');
+        }
+        message = 'Radar digest: ${parts.join(', ')}.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() =>
@@ -149,17 +284,19 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _ingestShared(List<SharedIngressFile> files) async {
-    final urls = files
-        .where((f) => f.text != null && f.text!.startsWith('http'))
-        .map((f) => f.text!.trim())
-        .toList();
+    final chunks = <String>[];
+    for (final f in files) {
+      final text = f.text?.trim();
+      if (text != null && text.isNotEmpty) chunks.add(text);
+    }
+    final urls = _parseUrls(chunks.join('\n'));
     if (urls.isNotEmpty) {
-      _urlController.text = urls.first;
+      _urlController.text = urls.join('\n');
       final platform = SocialPlatformInfo.fromUrl(urls.first);
       if (platform != null) {
         setState(() => _selectedPlatform = platform);
       }
-      await _scan(url: urls.first);
+      await _scan(url: urls.join('\n'));
       return;
     }
 
@@ -169,8 +306,6 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _protectFromPicker() async {
-    final allowed = await ensureUsage(context, UsageKind.protect);
-    if (!allowed || !mounted) return;
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const [
@@ -184,19 +319,21 @@ class _TraceScreenState extends State<TraceScreen>
         'wav',
       ],
     );
-    if (picked == null || picked.files.isEmpty) return;
+    if (picked == null || picked.files.isEmpty || !mounted) return;
 
     final files = <({String name, Uint8List bytes})>[];
     for (final file in picked.files) {
       final bytes = await file.readAsBytes();
       files.add((name: file.name, bytes: bytes));
     }
+    if (!mounted) return;
+    final allowed =
+        await ensureUsage(context, UsageKind.protect, units: files.length);
+    if (!allowed || !mounted) return;
     await _protectFiles(files);
   }
 
   Future<void> _protectPaths(List<String> paths) async {
-    final allowed = await ensureUsage(context, UsageKind.protect);
-    if (!allowed || !mounted) return;
     final files = <({String name, Uint8List bytes})>[];
     for (final path in paths) {
       final file = File(path);
@@ -206,7 +343,10 @@ class _TraceScreenState extends State<TraceScreen>
         bytes: await file.readAsBytes(),
       ));
     }
-    if (files.isEmpty) return;
+    if (files.isEmpty || !mounted) return;
+    final allowed =
+        await ensureUsage(context, UsageKind.protect, units: files.length);
+    if (!allowed || !mounted) return;
     await _protectFiles(files);
   }
 
@@ -232,6 +372,9 @@ class _TraceScreenState extends State<TraceScreen>
         owner: owner,
       );
       if (!mounted) return;
+      if (items.isNotEmpty) {
+        await commitUsage(UsageKind.protect, units: items.length);
+      }
       setState(() {
         _protected = items;
         _status = null;
@@ -350,13 +493,15 @@ class _TraceScreenState extends State<TraceScreen>
                   const UsageStatusBanner(kind: UsageKind.trace),
                   TextField(
                     controller: _urlController,
-                    keyboardType: TextInputType.url,
-                    textInputAction: TextInputAction.go,
-                    onSubmitted: (_) => _busy ? null : _scan(),
+                    keyboardType: TextInputType.multiline,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       hintText: platform == null
-                          ? 'https://cdn.example.com/photo.png'
-                          : 'Paste a ${platform.label} post or media URL',
+                          ? 'Paste one or more links (newline or comma)'
+                          : 'Paste ${platform.label} post/media URLs '
+                              '(one or many)',
                       prefixIcon: const Icon(Icons.link_rounded),
                     ),
                   ),
@@ -369,7 +514,7 @@ class _TraceScreenState extends State<TraceScreen>
                         : (v) => setState(() => _watchAfterScan = v),
                     title: const Text('Keep on radar'),
                     subtitle: const Text(
-                      'Re-check this link later for your fingerprint.',
+                      'Watchlist rescans are free and run when you open Trace.',
                       style: TextStyle(
                           fontSize: 12, color: EmColors.mutedForeground),
                     ),
@@ -384,7 +529,7 @@ class _TraceScreenState extends State<TraceScreen>
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.radar, size: 18),
-                    label: Text(_busy ? 'Scanning…' : 'Scan link'),
+                    label: Text(_busy ? 'Scanning…' : 'Scan link(s)'),
                   ),
                 ],
               ),
@@ -507,6 +652,30 @@ class _TraceScreenState extends State<TraceScreen>
               ),
             ),
           ),
+        if (_batchResults != null && _batchResults!.length > 1)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: EmCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MonoLabel('Batch scan'),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_batchResults!.where((r) => r.sighting.found).length}'
+                      '/${_batchResults!.length} links had a readable fingerprint.',
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: EmColors.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (_lastResult != null)
           SliverToBoxAdapter(
             child: Padding(
@@ -523,7 +692,9 @@ class _TraceScreenState extends State<TraceScreen>
                   child: Text('RADAR WATCHLIST', style: emMonoLabel(size: 10)),
                 ),
                 TextButton(
-                  onPressed: _busy || _watch.isEmpty ? null : _rescanAll,
+                  onPressed: _busy || _watch.isEmpty
+                      ? null
+                      : () => _rescanAll(showDigest: true),
                   child: const Text('Rescan all'),
                 ),
               ],
@@ -556,7 +727,7 @@ class _TraceScreenState extends State<TraceScreen>
                   busy: _busy,
                   onScan: () {
                     _urlController.text = w.url;
-                    _scan(url: w.url);
+                    _scan(url: w.url, countTowardQuota: false);
                   },
                   onRemove: () async {
                     await TraceStore.instance.removeWatchTarget(w.id);
@@ -1211,6 +1382,20 @@ class _SightingTile extends StatelessWidget {
                           color: EmColors.destructive,
                         ),
                       ),
+                    ] else if (!sighting.found &&
+                        (sighting.note != null || social != null)) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        sighting.note ??
+                            (social != null
+                                ? '${social.label} often recompresses media and can strip hidden marks.'
+                                : 'Re-encoding may have removed the fingerprint.'),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: EmColors.mutedForeground,
+                        ),
+                      ),
                     ],
                     const SizedBox(height: 6),
                     Text(
@@ -1239,17 +1424,23 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = result.sighting;
-    final banner = s.error != null
-        ? (ok: false, title: 'Could not scan URL', subtitle: s.error!)
-        : claimBanner(s.claimStatus);
     final social = SocialPlatformInfo.fromUrl(s.url);
+    final banner = traceResultBanner(
+      status: s.claimStatus,
+      error: s.error,
+      note: s.note,
+      socialHost: social != null,
+    );
     return EmCard(
       glow: s.found,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (social != null) ...[
-            MonoLabel('Hit on ${social.label}', color: Color(social.accent)),
+            MonoLabel(
+              s.found ? 'Hit on ${social.label}' : 'Checked on ${social.label}',
+              color: Color(social.accent),
+            ),
             const SizedBox(height: 10),
           ],
           StatusBanner(

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/auth.dart';
-import '../core/google_auth_config.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import 'privacy_policy_screen.dart';
@@ -20,11 +18,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+  final _totpController = TextEditingController();
 
   bool _isSignUp = false;
   bool _busy = false;
   bool _obscure = true;
   bool _obscureConfirm = true;
+  bool _awaitingTotp = false;
   String? _error;
 
   @override
@@ -33,12 +33,15 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
+    _totpController.dispose();
     super.dispose();
   }
 
   void _clearSecrets() {
     _passwordController.clear();
     _confirmController.clear();
+    _totpController.clear();
+    _awaitingTotp = false;
   }
 
   Future<void> _submitEmail() async {
@@ -54,13 +57,21 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _passwordController.text,
           confirmPassword: _confirmController.text,
         );
+        _clearSecrets();
       } else {
         await AuthService.instance.signInWithEmail(
           email: _emailController.text,
           password: _passwordController.text,
+          totpCode: _awaitingTotp ? _totpController.text : null,
         );
+        _clearSecrets();
       }
-      _clearSecrets();
+    } on TotpRequiredException {
+      if (!mounted) return;
+      setState(() {
+        _awaitingTotp = true;
+        _error = null;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -70,11 +81,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitGoogle() async {
-    if (!AuthService.instance.isGoogleConfigured) {
-      final configured = await _showGoogleSetupDialog();
-      if (!configured) return;
-    }
-
     setState(() {
       _busy = true;
       _error = null;
@@ -84,159 +90,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _clearSecrets();
     } catch (error) {
       if (!mounted) return;
-      final message = error.toString().replaceFirst('Exception: ', '');
-      setState(() => _error = message);
-      if (message.toLowerCase().contains('client') ||
-          message.toLowerCase().contains('setup') ||
-          message.toLowerCase().contains('oauth')) {
-        await _showGoogleSetupDialog();
-      }
+      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<bool> _showGoogleSetupDialog() async {
-    final controller = TextEditingController(
-      text: GoogleAuthConfig.serverClientId,
-    );
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: EmColors.card,
-          title: const Text('Set up Google Sign-In'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Create two OAuth clients in Google Cloud, then paste the Web client ID here.',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    height: 1.45,
-                    color: EmColors.mutedForeground,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  '1. Open Credentials → Create OAuth client',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '• Web application → copy its Client ID\n'
-                  '• Android → package + BOTH SHA-1s below (no need to paste that ID)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: EmColors.mutedForeground,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SelectableText(
-                  'Package: ${GoogleAuthConfig.androidPackageName}\n'
-                  'Debug SHA-1: ${GoogleAuthConfig.androidDebugSha1}\n'
-                  'Release SHA-1: ${GoogleAuthConfig.androidReleaseSha1}',
-                  style: emMono(size: 11),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(
-                          text: GoogleAuthConfig.androidDebugSha1,
-                        ));
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Debug SHA-1 copied')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy debug SHA-1'),
-                    ),
-                    TextButton.icon(
-                      onPressed: () async {
-                        await Clipboard.setData(ClipboardData(
-                          text: GoogleAuthConfig.androidReleaseSha1,
-                        ));
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Release SHA-1 copied')),
-                        );
-                      },
-                      icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy release SHA-1'),
-                    ),
-                    TextButton.icon(
-                      onPressed: () async {
-                        final uri = Uri.parse(
-                          'https://console.cloud.google.com/apis/credentials',
-                        );
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      },
-                      icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('Open Cloud Console'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Web client ID',
-                    hintText: '123-abc.apps.googleusercontent.com',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  await AuthService.instance
-                      .configureGoogleServerClientId(controller.text);
-                  if (!context.mounted) return;
-                  Navigator.pop(context, true);
-                } catch (error) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        error.toString().replaceFirst('Exception: ', ''),
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Save & continue'),
-            ),
-          ],
-        );
-      },
-    );
-    controller.dispose();
-    return saved == true;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final googleReady = AuthService.instance.isGoogleConfigured;
 
     return Scaffold(
       body: Stack(
@@ -248,16 +110,14 @@ class _LoginScreenState extends State<LoginScreen> {
             right: 0,
             child: IgnorePointer(
               child: Container(
-                height: 280,
+                height: 320,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: EmColors.primary.withValues(alpha: 0.2),
-                      blurRadius: 120,
-                      spreadRadius: 40,
-                    ),
-                  ],
+                  gradient: RadialGradient(
+                    colors: [
+                      EmColors.primary.withValues(alpha: 0.18),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -296,47 +156,38 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              OutlinedButton.icon(
-                                onPressed: _busy ? null : _submitGoogle,
-                                icon: const Icon(Icons.g_mobiledata, size: 28),
-                                label: Text(
-                                  googleReady
-                                      ? 'Continue with Google'
-                                      : 'Continue with Google (setup)',
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(50),
-                                ),
-                              ),
-                              if (!googleReady) ...[
-                                const SizedBox(height: 8),
-                                TextButton(
-                                  onPressed: _busy
-                                      ? null
-                                      : () async {
-                                          final ok =
-                                              await _showGoogleSetupDialog();
-                                          if (ok && mounted) setState(() {});
-                                        },
-                                  child: const Text('Set up Google Sign-In'),
-                                ),
-                              ],
-                              const SizedBox(height: 18),
-                              Row(
-                                children: [
-                                  const Expanded(child: Divider()),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    child: Text('OR EMAIL',
-                                        style: emMonoLabel(
-                                            color: EmColors.mutedForeground,
-                                            size: 9)),
+                              if (AuthService.instance.isGoogleConfigured) ...[
+                                OutlinedButton.icon(
+                                  onPressed: _busy ? null : _submitGoogle,
+                                  icon: const Text(
+                                    'G',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                    ),
                                   ),
-                                  const Expanded(child: Divider()),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
+                                  label: const Text('Continue with Google'),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(50),
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                Row(
+                                  children: [
+                                    const Expanded(child: Divider()),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12),
+                                      child: Text('OR EMAIL',
+                                          style: emMonoLabel(
+                                              color: EmColors.mutedForeground,
+                                              size: 9)),
+                                    ),
+                                    const Expanded(child: Divider()),
+                                  ],
+                                ),
+                                const SizedBox(height: 18),
+                              ],
                               if (_isSignUp) ...[
                                 TextField(
                                   controller: _nameController,
@@ -421,6 +272,35 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               ],
+                              if (_awaitingTotp && !_isSignUp) ...[
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Enter the 6-digit code from your authenticator app.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.4,
+                                    color: EmColors.mutedForeground,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: _totpController,
+                                  keyboardType: TextInputType.number,
+                                  textInputAction: TextInputAction.done,
+                                  autofillHints: const [
+                                    AutofillHints.oneTimeCode
+                                  ],
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(6),
+                                  ],
+                                  onSubmitted: (_) => _submitEmail(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Authenticator code',
+                                    hintText: '123456',
+                                  ),
+                                ),
+                              ],
                               if (_error != null) ...[
                                 const SizedBox(height: 14),
                                 StatusBanner(
@@ -442,9 +322,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                         child: CircularProgressIndicator(
                                             strokeWidth: 2),
                                       )
-                                    : Text(_isSignUp
-                                        ? 'Create account'
-                                        : 'Sign in with email'),
+                                    : Text(_awaitingTotp && !_isSignUp
+                                        ? 'Verify code'
+                                        : (_isSignUp
+                                            ? 'Create account'
+                                            : 'Sign in with email')),
                               ),
                             ],
                           ),
@@ -456,6 +338,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               : () => setState(() {
                                     _isSignUp = !_isSignUp;
                                     _error = null;
+                                    _awaitingTotp = false;
+                                    _totpController.clear();
                                     _confirmController.clear();
                                   }),
                           child: Text(
@@ -479,9 +363,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          googleReady
-                              ? 'Email passwords stay in on-device secure storage. Google uses your Google account.'
-                              : 'Google Sign-In needs a one-time OAuth setup (Web + Android clients). Email login works without it.',
+                          'Email passwords stay in on-device secure storage. Google uses your Google account.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: EmColors.mutedForeground,

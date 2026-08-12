@@ -30,12 +30,12 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    ShareIngress.instance.listen(_onShared);
+    ShareIngress.instance.attach(_onShared);
   }
 
   @override
   void dispose() {
-    ShareIngress.instance.dispose();
+    ShareIngress.instance.detach();
     super.dispose();
   }
 
