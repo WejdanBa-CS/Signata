@@ -296,6 +296,29 @@ class AccountClaimKeys {
     return _secure.read(key: _storageKey(user.id));
   }
 
+  /// Overwrites the current account claim key (e.g. after device restore).
+  /// Returns the key id (kid).
+  static Future<String> importForCurrentUser(String base64UrlKey) async {
+    final user = AuthService.instance.user;
+    if (user == null) {
+      throw StateError('Not signed in.');
+    }
+    late final Uint8List bytes;
+    try {
+      bytes = Uint8List.fromList(base64Url.decode(base64UrlKey.trim()));
+    } catch (_) {
+      throw ArgumentError('Claim key is not valid base64url.');
+    }
+    if (bytes.length != 32) {
+      throw ArgumentError('Claim key must be 32 bytes.');
+    }
+    await _secure.write(
+      key: _storageKey(user.id),
+      value: base64UrlEncode(bytes),
+    );
+    return ClaimKey.kidFor(bytes);
+  }
+
   static Future<void> deleteForUser(String userId) async {
     await _secure.delete(key: _storageKey(userId));
   }

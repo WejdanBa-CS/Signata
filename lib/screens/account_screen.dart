@@ -1,9 +1,13 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/auth.dart';
+import '../core/claim_registry.dart';
+import '../core/google_auth_config.dart';
 import '../core/local_data.dart';
 import '../core/share_utils.dart';
 import '../core/trace_store.dart';
@@ -115,6 +119,8 @@ class AccountScreen extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _PlanCard(),
+        const SizedBox(height: 16),
+        const _GoogleSignInCard(),
         const SizedBox(height: 16),
         const _PrivacyDataCard(),
         const SizedBox(height: 16),
@@ -507,6 +513,84 @@ class _PrivacyDataCard extends StatelessWidget {
     }
   }
 
+  Future<void> _importRecovery(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Import recovery kit?'),
+        content: const Text(
+          'This replaces your claim key on this device with the key from the '
+          'kit. Only do this when restoring the same Signata identity.\n\n'
+          'Fingerprints sealed with a different key will no longer show as '
+          'authenticated for this account.',
+          style: TextStyle(height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Choose file'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['txt', 'kit', 'text'],
+    );
+    final file = picked?.files.firstOrNull;
+    if (file == null) return;
+    try {
+      final bytes = await file.readAsBytes();
+      final kid = await importRecoveryKit(utf8.decode(bytes));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Claim key restored (kid $kid).')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _clearClaims(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Clear published claims?'),
+        content: const Text(
+          'Removes local claim catalog entries on this device. '
+          'Watermarked files keep their embedded fingerprints.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ClaimRegistry.instance.clearLocal();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Published claims cleared.')),
+    );
+  }
+
   Future<void> _clearTrace(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -630,8 +714,9 @@ class _PrivacyDataCard extends StatelessWidget {
           const MonoLabel('Privacy & data'),
           const SizedBox(height: 10),
           const Text(
-            'Export a recovery kit before wiping this device. Clear Trace data '
-            'anytime. Delete account removes local Signata identity data.',
+            'Export a recovery kit before wiping this device. Import it after '
+            'reinstall to keep authenticating old fingerprints. Clear Trace or '
+            'claims anytime. Delete account removes local Signata identity data.',
             style: TextStyle(
                 fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
           ),
@@ -646,9 +731,19 @@ class _PrivacyDataCard extends StatelessWidget {
                 label: const Text('Export recovery kit'),
               ),
               OutlinedButton.icon(
+                onPressed: () => _importRecovery(context),
+                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text('Import recovery kit'),
+              ),
+              OutlinedButton.icon(
                 onPressed: () => _clearTrace(context),
                 icon: const Icon(Icons.radar_outlined, size: 18),
                 label: const Text('Clear Trace data'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _clearClaims(context),
+                icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                label: const Text('Clear claims'),
               ),
               OutlinedButton.icon(
                 onPressed: () => _deleteAccount(context),
@@ -662,6 +757,126 @@ class _PrivacyDataCard extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoogleSignInCard extends StatefulWidget {
+  const _GoogleSignInCard();
+
+  @override
+  State<_GoogleSignInCard> createState() => _GoogleSignInCardState();
+}
+
+class _GoogleSignInCardState extends State<_GoogleSignInCard> {
+  bool _busy = false;
+
+  Future<void> _configure() async {
+    final controller = TextEditingController(
+      text: GoogleAuthConfig.hasServerClientId && !GoogleAuthConfig.isFromDartDefine
+          ? GoogleAuthConfig.serverClientId
+          : '',
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: EmColors.card,
+        title: const Text('Google Web client ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Paste the OAuth Web application client ID from Google Cloud. '
+              'Also add Android clients with package app.signata.signata and '
+              'your SHA-1s (see docs/RELEASE_PLAY.md).',
+              style: TextStyle(height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autocorrect: false,
+              decoration: const InputDecoration(
+                labelText: 'Web client ID',
+                hintText: '….apps.googleusercontent.com',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final value = controller.text;
+    controller.dispose();
+    if (saved != true) return;
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.configureGoogleServerClientId(value);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google Sign-In configured. Sign out and try Google.'),
+        ),
+      );
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error'.replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = AuthService.instance.isGoogleConfigured;
+    return EmCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const MonoLabel('Google Sign-In'),
+              const Spacer(),
+              MonoLabel(
+                configured ? 'Ready' : 'Not configured',
+                color: configured ? EmColors.accent : EmColors.destructive,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            configured
+                ? (GoogleAuthConfig.isFromDartDefine
+                    ? 'Using the Web client ID baked into this build.'
+                    : 'Using a Web client ID saved on this device.')
+                : 'Email login works without Google. To enable Continue with Google, '
+                    'paste your Web client ID here or build with google_oauth.env.',
+            style: const TextStyle(
+                fontSize: 13, height: 1.45, color: EmColors.mutedForeground),
+          ),
+          if (kDebugMode || !configured) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _configure,
+              icon: const Icon(Icons.vpn_key_outlined, size: 18),
+              label: Text(configured ? 'Update Web client ID' : 'Paste Web client ID'),
+            ),
+          ],
         ],
       ),
     );
