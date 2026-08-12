@@ -61,7 +61,11 @@ class UrlTracer {
           found: false,
           claimStatus: ClaimStatus.missing,
           error: resolved.note ??
-              '${social.label} link could not be resolved to a media file.',
+              '${social.label} did not expose a direct media file. '
+                  'Share the image/video into Signata instead of the post link.',
+          note:
+              'Post URLs are fragile. From ${social.label}, use Share → Signata '
+              'on the media itself, or pick your original protected export.',
         );
         if (persist) await TraceStore.instance.addSighting(sighting);
         if (addToWatchlist) {
@@ -116,15 +120,91 @@ class UrlTracer {
     }
 
     final medium = _detectMedium(url: url, contentType: contentType, bytes: bytes);
+    return _finishScan(
+      sourceLabel: url,
+      medium: medium,
+      bytes: bytes,
+      contentType: contentType,
+      claimKey: claimKey,
+      persist: persist,
+      addToWatchlist: addToWatchlist,
+      social: social,
+      watchLabel: social?.label,
+    );
+  }
+
+  /// Scan bytes already on the device (share ingress / file picker).
+  /// This is the reliable Trace path — social post URLs often strip marks.
+  Future<TraceScanResult> scanBytes({
+    required Uint8List bytes,
+    required String fileName,
+    ClaimKey? claimKey,
+    bool persist = true,
+    String? contentType,
+  }) async {
+    if (bytes.isEmpty) {
+      throw ArgumentError('File is empty.');
+    }
+    if (bytes.length > _maxBytes) {
+      throw Exception('File is larger than 40 MB.');
+    }
+    final medium = _detectMedium(
+      url: fileName,
+      contentType: contentType,
+      bytes: bytes,
+    );
+    return _finishScan(
+      sourceLabel: 'local://$fileName',
+      medium: medium,
+      bytes: bytes,
+      contentType: contentType,
+      claimKey: claimKey,
+      persist: persist,
+      addToWatchlist: false,
+      social: null,
+      localFile: true,
+    );
+  }
+
+  Future<TraceScanResult> _finishScan({
+    required String sourceLabel,
+    required TraceMedium medium,
+    required Uint8List bytes,
+    required ClaimKey? claimKey,
+    required bool persist,
+    required bool addToWatchlist,
+    String? contentType,
+    SocialPlatformInfo? social,
+    String? watchLabel,
+    bool localFile = false,
+  }) async {
     final extracted = await _extract(medium, bytes, claimKey);
     PublishedClaim? matched;
     if (extracted.reference != null && extracted.reference!.isNotEmpty) {
       matched = await ClaimRegistry.instance.findByReference(extracted.reference!);
     }
 
+    String? note;
+    if (!extracted.found) {
+      if (localFile) {
+        note =
+            'No Signata fingerprint in this file. If it came from a social app, '
+            'the platform may have recompressed it. Try your original protected export.';
+      } else if (social != null) {
+        note =
+            '${social.label} often recompresses uploads and strips hidden marks. '
+            'Best path: share the media file into Signata (or pick the original export) '
+            'instead of relying on the post URL.';
+      } else {
+        note =
+            'No Signata fingerprint was readable in this file. If it was '
+            're-saved, compressed, or re-encoded, the mark may be gone.';
+      }
+    }
+
     final sighting = TraceSighting(
       id: _id(),
-      url: url,
+      url: sourceLabel,
       medium: medium,
       at: DateTime.now().toUtc(),
       found: extracted.found,
@@ -134,21 +214,14 @@ class UrlTracer {
       reference: extracted.reference ?? matched?.reference,
       matchedPublishedClaimId: matched?.id,
       contentType: contentType,
-      note: !extracted.found
-          ? (social != null
-              ? '${social.label} often recompresses uploads, which can strip '
-                  'hidden fingerprints. If you posted a Signata-protected file, '
-                  'try scanning the original export or a direct CDN media URL.'
-              : 'No Signata fingerprint was readable in this file. If it was '
-                  're-saved, compressed, or re-encoded, the mark may be gone.')
-          : null,
+      note: note,
     );
 
     if (persist) await TraceStore.instance.addSighting(sighting);
     if (addToWatchlist) {
       final watch = await TraceStore.instance.addWatchTarget(
-        url,
-        label: social?.label,
+        sourceLabel,
+        label: watchLabel,
       );
       await TraceStore.instance.touchWatchTarget(
         watch.id,

@@ -50,9 +50,9 @@ class _AppShellState extends State<AppShell> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          files.any((f) => f.text != null)
-              ? 'Shared link ready to scan in Trace'
-              : 'Shared media ready to fingerprint in Trace',
+          files.any((f) => f.path.isNotEmpty)
+              ? 'Shared media ready to check in Trace'
+              : 'Shared link ready — file share is more reliable than post URLs',
         ),
       ),
     );
