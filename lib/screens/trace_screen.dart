@@ -149,6 +149,38 @@ class _TraceScreenState extends State<TraceScreen>
       setState(() => _error = 'Paste one or more http(s) links to scan.');
       return;
     }
+    final socialTargets =
+        targets.where((u) => SocialPlatformInfo.fromUrl(u) != null).toList();
+    if (countTowardQuota &&
+        socialTargets.isNotEmpty &&
+        url == null &&
+        mounted) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: EmColors.card,
+          title: const Text('URL scan is a fallback'),
+          content: Text(
+            '${socialTargets.length} social link'
+            '${socialTargets.length == 1 ? '' : 's'} detected. '
+            'Platforms often strip fingerprints.\n\n'
+            'Prefer “Check local file” or Share → Signata. Continue anyway?',
+            style: const TextStyle(height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Scan anyway'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
     if (countTowardQuota) {
       final allowed =
           await ensureUsage(context, UsageKind.trace, units: targets.length);
@@ -284,25 +316,172 @@ class _TraceScreenState extends State<TraceScreen>
   }
 
   Future<void> _ingestShared(List<SharedIngressFile> files) async {
+    final media = files.where((f) => f.path.isNotEmpty).toList();
     final chunks = <String>[];
     for (final f in files) {
       final text = f.text?.trim();
       if (text != null && text.isNotEmpty) chunks.add(text);
     }
     final urls = _parseUrls(chunks.join('\n'));
-    if (urls.isNotEmpty) {
-      _urlController.text = urls.join('\n');
-      final platform = SocialPlatformInfo.fromUrl(urls.first);
-      if (platform != null) {
-        setState(() => _selectedPlatform = platform);
+
+    // Media files first — reliable on-device Trace.
+    if (media.isNotEmpty) {
+      await _scanLocalPaths(media.map((f) => f.path).toList());
+      if (urls.isNotEmpty && mounted) {
+        _urlController.text = urls.join('\n');
+        final platform = SocialPlatformInfo.fromUrl(urls.first);
+        if (platform != null) {
+          setState(() => _selectedPlatform = platform);
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Also received link(s). File check ran first — URL scan is optional below.',
+            ),
+          ),
+        );
       }
-      await _scan(url: urls.join('\n'));
       return;
     }
 
-    final media = files.where((f) => f.path.isNotEmpty).toList();
-    if (media.isEmpty) return;
-    await _protectPaths(media.map((f) => f.path).toList());
+    if (urls.isEmpty) return;
+    _urlController.text = urls.join('\n');
+    final platform = SocialPlatformInfo.fromUrl(urls.first);
+    if (platform != null) {
+      setState(() => _selectedPlatform = platform);
+    }
+    final socialOnly = urls.every((u) => SocialPlatformInfo.fromUrl(u) != null);
+    if (socialOnly && mounted) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: EmColors.card,
+          title: const Text('Post links are fragile'),
+          content: const Text(
+            'Instagram, TikTok, and X often hide or recompress media. '
+            'Checking a shared file is far more reliable.\n\n'
+            'Scan these links anyway as a fallback?',
+            style: TextStyle(height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Scan links'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+    await _scan(url: urls.join('\n'));
+  }
+
+  Future<void> _scanLocalFromPicker() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'mp4',
+        'mov',
+        'm4v',
+        'wav',
+      ],
+    );
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final files = <({String name, Uint8List bytes})>[];
+    for (final file in picked.files) {
+      final bytes = await file.readAsBytes();
+      files.add((name: file.name, bytes: bytes));
+    }
+    if (!mounted) return;
+    await _scanLocalFiles(files);
+  }
+
+  Future<void> _scanLocalPaths(List<String> paths) async {
+    final files = <({String name, Uint8List bytes})>[];
+    for (final path in paths) {
+      final file = File(path);
+      if (!await file.exists()) continue;
+      files.add((
+        name: path.split(Platform.pathSeparator).last,
+        bytes: await file.readAsBytes(),
+      ));
+    }
+    if (files.isEmpty || !mounted) return;
+    await _scanLocalFiles(files);
+  }
+
+  Future<void> _scanLocalFiles(
+    List<({String name, Uint8List bytes})> files,
+  ) async {
+    final allowed =
+        await ensureUsage(context, UsageKind.trace, units: files.length);
+    if (!allowed || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _status = files.length == 1
+          ? 'Checking local file…'
+          : 'Checking ${files.length} local files…';
+      _lastResult = null;
+      _batchResults = null;
+    });
+    try {
+      final key = await AccountClaimKeys.current();
+      final results = <TraceScanResult>[];
+      var successes = 0;
+      for (var i = 0; i < files.length; i++) {
+        if (!mounted) return;
+        if (files.length > 1) {
+          setState(() => _status = 'Checking ${i + 1}/${files.length}…');
+        }
+        final result = await UrlTracer.instance.scanBytes(
+          bytes: files[i].bytes,
+          fileName: files[i].name,
+          claimKey: key,
+        );
+        results.add(result);
+        successes++;
+      }
+      if (successes > 0) {
+        await commitUsage(UsageKind.trace, units: successes);
+      }
+      if (!mounted) return;
+      setState(() {
+        _lastResult = results.last;
+        _batchResults = results.length > 1 ? results : null;
+        _status = null;
+      });
+      await _reload();
+      if (mounted && results.length > 1) {
+        final hits = results.where((r) => r.sighting.found).length;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Local check: $hits/${results.length} with fingerprints.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() =>
+          _error = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _status = null;
+        });
+      }
+    }
   }
 
   Future<void> _protectFromPicker() async {
@@ -327,23 +506,6 @@ class _TraceScreenState extends State<TraceScreen>
       files.add((name: file.name, bytes: bytes));
     }
     if (!mounted) return;
-    final allowed =
-        await ensureUsage(context, UsageKind.protect, units: files.length);
-    if (!allowed || !mounted) return;
-    await _protectFiles(files);
-  }
-
-  Future<void> _protectPaths(List<String> paths) async {
-    final files = <({String name, Uint8List bytes})>[];
-    for (final path in paths) {
-      final file = File(path);
-      if (!await file.exists()) continue;
-      files.add((
-        name: path.split(Platform.pathSeparator).last,
-        bytes: await file.readAsBytes(),
-      ));
-    }
-    if (files.isEmpty || !mounted) return;
     final allowed =
         await ensureUsage(context, UsageKind.protect, units: files.length);
     if (!allowed || !mounted) return;
@@ -446,7 +608,7 @@ class _TraceScreenState extends State<TraceScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Fingerprint media for Instagram, TikTok, and X — then scan public links for your claim.',
+                  'Check a shared or saved file first — that survives social recompression better than post URLs. Then fingerprint before you post, and watch links as a fallback.',
                   style: theme.textTheme.bodyLarge?.copyWith(
                     color: EmColors.mutedForeground,
                     height: 1.45,
@@ -470,66 +632,34 @@ class _TraceScreenState extends State<TraceScreen>
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
             child: EmCard(
               glow: _busy,
+              borderColor: EmColors.accent.withValues(alpha: 0.4),
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      MonoLabel(
-                        platform == null
-                            ? 'Scan any URL'
-                            : 'Scan on ${platform.label}',
-                      ),
-                      const Spacer(),
-                      if (platform != null)
-                        TextButton(
-                          onPressed: _busy ? null : _openPlatform,
-                          child: Text('Open ${platform.shortLabel}'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const UsageStatusBanner(kind: UsageKind.trace),
-                  TextField(
-                    controller: _urlController,
-                    keyboardType: TextInputType.multiline,
-                    minLines: 1,
-                    maxLines: 4,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      hintText: platform == null
-                          ? 'Paste one or more links (newline or comma)'
-                          : 'Paste ${platform.label} post/media URLs '
-                              '(one or many)',
-                      prefixIcon: const Icon(Icons.link_rounded),
-                    ),
-                  ),
+                  const MonoLabel('1 · Check a file (best)',
+                      color: EmColors.accent),
                   const SizedBox(height: 10),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: _watchAfterScan,
-                    onChanged: _busy
-                        ? null
-                        : (v) => setState(() => _watchAfterScan = v),
-                    title: const Text('Keep on radar'),
-                    subtitle: const Text(
-                      'Watchlist rescans are free and run when you open Trace.',
-                      style: TextStyle(
-                          fontSize: 12, color: EmColors.mutedForeground),
+                  const UsageStatusBanner(kind: UsageKind.trace),
+                  const Text(
+                    'Share media from Instagram / TikTok / X into Signata, or pick a saved export. Local checks beat fragile post links.',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      height: 1.45,
+                      color: EmColors.mutedForeground,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 14),
                   FilledButton.icon(
-                    onPressed: _busy ? null : () => _scan(),
+                    onPressed: _busy ? null : _scanLocalFromPicker,
                     icon: _busy
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.radar, size: 18),
-                    label: Text(_busy ? 'Scanning…' : 'Scan link(s)'),
+                        : const Icon(Icons.folder_open_rounded, size: 18),
+                    label: Text(_busy ? 'Checking…' : 'Check local file'),
                   ),
                 ],
               ),
@@ -547,14 +677,14 @@ class _TraceScreenState extends State<TraceScreen>
                 children: [
                   MonoLabel(
                     platform == null
-                        ? 'Protect & post'
-                        : 'Protect for ${platform.label}',
+                        ? '2 · Protect & post'
+                        : '2 · Protect for ${platform.label}',
                     color: Color(platform?.accent ?? 0xFF57D9EC),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     platform?.hint ??
-                        'Import images or videos, fingerprint all of them, then share into the social app.',
+                        'Fingerprint images or videos, then share into the social app.',
                     style: const TextStyle(
                       fontSize: 13.5,
                       height: 1.45,
@@ -623,13 +753,87 @@ class _TraceScreenState extends State<TraceScreen>
                   ],
                   const SizedBox(height: 8),
                   Text(
-                    'Tip: In Instagram, TikTok, or X use Share → Signata to send media or a post link straight here.',
+                    'Tip: share the media into Signata after posting if you need to verify — not only the post URL.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: EmColors.mutedForeground,
                       height: 1.4,
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+            child: EmCard(
+              padding: const EdgeInsets.all(12),
+              child: Theme(
+                data: theme.copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+                  childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                  title: MonoLabel(
+                    platform == null
+                        ? '3 · Scan URL (fallback)'
+                        : '3 · Scan ${platform.label} URL (fallback)',
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Post pages often hide media or strip marks. Prefer step 1.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: EmColors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  children: [
+                    if (platform != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _busy ? null : _openPlatform,
+                          child: Text('Open ${platform.shortLabel}'),
+                        ),
+                      ),
+                    TextField(
+                      controller: _urlController,
+                      keyboardType: TextInputType.multiline,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: platform == null
+                            ? 'Prefer direct media CDN links'
+                            : 'Paste ${platform.label} post/media URLs',
+                        prefixIcon: const Icon(Icons.link_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _watchAfterScan,
+                      onChanged: _busy
+                          ? null
+                          : (v) => setState(() => _watchAfterScan = v),
+                      title: const Text('Keep on radar'),
+                      subtitle: const Text(
+                        'Free rescans when you open Trace (online, every 12h).',
+                        style: TextStyle(
+                            fontSize: 12, color: EmColors.mutedForeground),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _scan(),
+                      icon: const Icon(Icons.radar, size: 18),
+                      label: const Text('Scan link(s) anyway'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -680,7 +884,10 @@ class _TraceScreenState extends State<TraceScreen>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: _ResultCard(result: _lastResult!),
+              child: _ResultCard(
+                result: _lastResult!,
+                onCheckFile: _busy ? null : _scanLocalFromPicker,
+              ),
             ),
           ),
         SliverToBoxAdapter(
@@ -706,7 +913,7 @@ class _TraceScreenState extends State<TraceScreen>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'No links on radar yet. Scan a social or media URL with “Keep on radar”.',
+                'No links on radar yet. Prefer checking a shared file; add URLs only as a fallback with “Keep on radar”.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: EmColors.mutedForeground,
                 ),
@@ -1417,14 +1624,19 @@ class _SightingTile extends StatelessWidget {
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result});
+  const _ResultCard({
+    required this.result,
+    this.onCheckFile,
+  });
 
   final TraceScanResult result;
+  final VoidCallback? onCheckFile;
 
   @override
   Widget build(BuildContext context) {
     final s = result.sighting;
     final social = SocialPlatformInfo.fromUrl(s.url);
+    final isLocal = s.url.startsWith('local://');
     final banner = traceResultBanner(
       status: s.claimStatus,
       error: s.error,
@@ -1442,6 +1654,9 @@ class _ResultCard extends StatelessWidget {
               color: Color(social.accent),
             ),
             const SizedBox(height: 10),
+          ] else if (isLocal) ...[
+            const MonoLabel('Local file check', color: EmColors.accent),
+            const SizedBox(height: 10),
           ],
           StatusBanner(
             ok: banner.ok,
@@ -1450,9 +1665,20 @@ class _ResultCard extends StatelessWidget {
                 ? '${banner.subtitle} Matched published claim “${result.matchedClaim!.subject}”.'
                 : banner.subtitle,
           ),
+          if (!s.found && onCheckFile != null && !isLocal) ...[
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: onCheckFile,
+              icon: const Icon(Icons.folder_open_rounded, size: 18),
+              label: const Text('Check a local / shared file instead'),
+            ),
+          ],
           const SizedBox(height: 14),
           DetailList(rows: [
-            DetailRow('URL', s.url),
+            DetailRow(
+              isLocal ? 'File' : 'URL',
+              isLocal ? s.url.replaceFirst('local://', '') : s.url,
+            ),
             DetailRow('Medium', s.medium.wire),
             DetailRow('Owner', s.owner ?? '—'),
             DetailRow('Subject', s.subject ?? '—'),

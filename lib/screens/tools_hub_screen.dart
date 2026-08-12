@@ -20,7 +20,7 @@ class ToolsHubScreen extends StatelessWidget {
           tag: 'Workspace',
           title: 'Protect & verify',
           desc:
-              'Protect files on-device, then trace public URLs across the internet for Signata fingerprints.',
+              'Protect files on-device, then check shared media or watched links for your Signata claim.',
         ),
         const SizedBox(height: 20),
         _ToolTile(
@@ -59,14 +59,14 @@ class ToolsHubScreen extends StatelessWidget {
           tag: '05 / Internet',
           title: 'Trace & social',
           desc:
-              'Fingerprint media for Instagram, TikTok, and X, scan post links, and watch the web for your claim.',
+              'Check a shared file first (most reliable), fingerprint for Instagram / TikTok / X, then optionally watch post links.',
           icon: Icons.radar,
           tone: EmColors.primary,
           onTap: () => onOpenTool(EmTool.trace),
         ),
         const SizedBox(height: 12),
         Text(
-          'Tip: share a post or media from Instagram / TikTok / X into Signata, fingerprint it, then post the protected copy.',
+          'Tip: from Instagram / TikTok / X, share the media into Signata — not just the post URL. Platforms often strip fingerprints from recompressed uploads.',
           style: theme.textTheme.bodySmall
               ?.copyWith(color: EmColors.mutedForeground, height: 1.45),
         ),
