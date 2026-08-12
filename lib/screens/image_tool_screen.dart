@@ -7,6 +7,7 @@ import '../core/claim_crypto.dart';
 import '../core/claim_status_ui.dart';
 import '../core/history.dart';
 import '../core/image_watermark.dart';
+import '../core/onboarding.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
 import '../core/trace_models.dart';
@@ -102,6 +103,7 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
           at: DateTime.now(),
         ));
         await commitUsage(UsageKind.protect);
+        await OnboardingFlags.instance.markProtectedOnce();
       } else {
         setState(() => _workingStep = 'Scanning for a watermark');
         final outcome = await extractWatermark(bytes, claimKey: claimKey);
@@ -270,8 +272,8 @@ class _ImageToolScreenState extends State<ImageToolScreen> {
                     ? 'Choose an image to protect'
                     : 'Choose an image to check',
                 hint: _mode == ToolMode.embed
-                    ? 'PNG, JPG or WEBP — processed locally'
-                    : 'Works with any PNG carrying an Signata watermark',
+                    ? 'Prefer PNG. JPG/WEBP recompression can weaken LSB marks.'
+                    : 'Works with any PNG carrying a Signata watermark',
                 buttonLabel: 'Choose an image',
                 onPick: _pickAndRun,
                 fileName: _fileName,

@@ -4,11 +4,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/auth.dart';
 import '../core/claim_registry.dart';
 import '../core/google_auth_config.dart';
 import '../core/local_data.dart';
+import '../core/onboarding.dart';
 import '../core/share_utils.dart';
 import '../core/trace_store.dart';
 import '../core/usage_entitlements.dart';
@@ -279,6 +281,21 @@ class _TwoFactorCardState extends State<_TwoFactorCard> {
     }
   }
 
+  Future<void> _cancelSetup() async {
+    setState(() => _busy = true);
+    try {
+      await AuthService.instance.cancelTotpSetup();
+      if (!mounted) return;
+      setState(() {
+        _setupSecret = null;
+        _setupUri = null;
+        _codeController.clear();
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _confirmSetup() async {
     setState(() => _busy = true);
     try {
@@ -419,10 +436,27 @@ class _TwoFactorCardState extends State<_TwoFactorCard> {
           const SizedBox(height: 14),
           if (_setupSecret != null) ...[
             const Text(
-              'Add this key in your authenticator app, then enter the 6-digit code:',
+              'Scan this QR in your authenticator app (or enter the secret), then confirm the 6-digit code:',
               style: TextStyle(fontSize: 13, height: 1.45),
             ),
-            const SizedBox(height: 10),
+            if (_setupUri != null) ...[
+              const SizedBox(height: 14),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: QrImageView(
+                    data: _setupUri!,
+                    size: 180,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             SelectableText(
               _setupSecret!,
               style: emMono(size: 13),
@@ -433,10 +467,12 @@ class _TwoFactorCardState extends State<_TwoFactorCard> {
               children: [
                 TextButton.icon(
                   onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: _setupSecret!));
+                    await copySecretTemporarily(_setupSecret!);
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Secret copied')),
+                      const SnackBar(
+                        content: Text('Secret copied (clipboard clears in ~45s)'),
+                      ),
                     );
                   },
                   icon: const Icon(Icons.copy, size: 16),
@@ -445,10 +481,12 @@ class _TwoFactorCardState extends State<_TwoFactorCard> {
                 if (_setupUri != null)
                   TextButton.icon(
                     onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: _setupUri!));
+                      await copySecretTemporarily(_setupUri!);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('otpauth link copied')),
+                        const SnackBar(
+                          content: Text('Setup link copied (clears in ~45s)'),
+                        ),
                       );
                     },
                     icon: const Icon(Icons.link, size: 16),
@@ -470,9 +508,20 @@ class _TwoFactorCardState extends State<_TwoFactorCard> {
               ),
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _busy ? null : _confirmSetup,
-              child: const Text('Confirm & enable'),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _busy ? null : _confirmSetup,
+                    child: const Text('Confirm & enable'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TextButton(
+                  onPressed: _busy ? null : _cancelSetup,
+                  child: const Text('Cancel'),
+                ),
+              ],
             ),
           ] else if (enabled)
             OutlinedButton.icon(
@@ -505,6 +554,7 @@ class _PrivacyDataCard extends StatelessWidget {
         mimeType: 'text/plain',
         text: 'Signata recovery kit — keep offline and private.',
       );
+      await OnboardingFlags.instance.markRecoveryExported();
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
