@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/onboarding.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import 'tools_hub_screen.dart';
@@ -132,9 +133,16 @@ const _milestones = [
 ];
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.onOpenTool});
+  const HomeScreen({
+    super.key,
+    required this.onOpenTool,
+    this.onOpenAccount,
+    this.checklistNonce = 0,
+  });
 
   final void Function(EmTool tool) onOpenTool;
+  final VoidCallback? onOpenAccount;
+  final int checklistNonce;
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +150,11 @@ class HomeScreen extends StatelessWidget {
       padding: EdgeInsets.zero,
       children: [
         _Hero(onOpenTool: onOpenTool),
+        _StarterChecklist(
+          key: ValueKey('checklist-$checklistNonce'),
+          onOpenTool: onOpenTool,
+          onOpenAccount: onOpenAccount,
+        ),
         const _StatsStrip(),
         const _SectionPadding(child: _Features()),
         _bandDecoration(const _HowItWorks()),
@@ -163,6 +176,149 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
       child: _SectionPadding(child: child),
+    );
+  }
+}
+
+class _StarterChecklist extends StatefulWidget {
+  const _StarterChecklist({
+    super.key,
+    required this.onOpenTool,
+    this.onOpenAccount,
+  });
+
+  final void Function(EmTool tool) onOpenTool;
+  final VoidCallback? onOpenAccount;
+
+  @override
+  State<_StarterChecklist> createState() => _StarterChecklistState();
+}
+
+class _StarterChecklistState extends State<_StarterChecklist> {
+  bool _loading = true;
+  bool _show = false;
+  bool _recovery = false;
+  bool _protected = false;
+  bool _traced = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final show = await OnboardingFlags.instance.shouldShowChecklist();
+    final progress = await OnboardingFlags.instance.checklistProgress();
+    if (!mounted) return;
+    setState(() {
+      _show = show;
+      _recovery = progress.recovery;
+      _protected = progress.protected;
+      _traced = progress.traced;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || !_show) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      child: EmCard(
+        borderColor: EmColors.accent.withValues(alpha: 0.35),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: MonoLabel('Starter checklist', color: EmColors.accent),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    await OnboardingFlags.instance.dismissChecklist();
+                    if (!mounted) return;
+                    setState(() => _show = false);
+                  },
+                  child: const Text('Dismiss'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Three local steps to get value from Signata quickly:',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: EmColors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _CheckRow(
+              done: _recovery,
+              label: 'Export a recovery kit',
+              action: 'Account',
+              onTap: widget.onOpenAccount,
+            ),
+            _CheckRow(
+              done: _protected,
+              label: 'Protect one file',
+              action: 'Image tool',
+              onTap: () => widget.onOpenTool(EmTool.image),
+            ),
+            _CheckRow(
+              done: _traced,
+              label: 'Check a file in Trace',
+              action: 'Trace',
+              onTap: () => widget.onOpenTool(EmTool.trace),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CheckRow extends StatelessWidget {
+  const _CheckRow({
+    required this.done,
+    required this.label,
+    required this.action,
+    this.onTap,
+  });
+
+  final bool done;
+  final String label;
+  final String action;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(
+            done ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 18,
+            color: done ? EmColors.accent : EmColors.mutedForeground,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.5,
+                decoration: done ? TextDecoration.lineThrough : null,
+                color: done ? EmColors.mutedForeground : EmColors.foreground,
+              ),
+            ),
+          ),
+          if (!done && onTap != null)
+            TextButton(onPressed: onTap, child: Text(action)),
+        ],
+      ),
     );
   }
 }

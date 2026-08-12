@@ -685,8 +685,26 @@ class AuthService extends ChangeNotifier {
       if (error.code == GoogleSignInExceptionCode.canceled) {
         throw const AuthException('Google sign-in was cancelled.');
       }
+      final detail = (error.description ?? error.code.name).toLowerCase();
+      if (detail.contains('10') ||
+          detail.contains('developer_error') ||
+          detail.contains('sha') ||
+          detail.contains('oauth') ||
+          detail.contains('client')) {
+        throw const AuthException(
+          'Google Sign-In config mismatch. Confirm the Web client ID, and that '
+          'your Android OAuth client uses package app.signata.signata with the '
+          'debug, upload, and Play App Signing SHA-1 fingerprints '
+          '(see docs/RELEASE_PLAY.md).',
+        );
+      }
+      if (detail.contains('network') || detail.contains('timeout')) {
+        throw const AuthException(
+          'Google Sign-In needs a network connection. Try again online.',
+        );
+      }
       throw AuthException(
-        'Google sign-in failed. Try again, or use email instead. '
+        'Google sign-in failed. Check OAuth setup or use email instead. '
         '(${error.description ?? error.code.name})',
       );
     } catch (error) {
@@ -695,6 +713,12 @@ class AuthService extends ChangeNotifier {
         'Google sign-in failed. Use email for now. ($error)',
       );
     }
+  }
+
+  Future<void> cancelTotpSetup() async {
+    final user = _user;
+    if (user == null || user.provider != AuthProvider.email) return;
+    await _secure.delete(key: _pendingTotpKey(user.email));
   }
 
   Future<void> signOut() async {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/claim_crypto.dart';
 import '../core/claim_status_ui.dart';
 import '../core/history.dart';
+import '../core/onboarding.dart';
 import '../core/pdf_fingerprint.dart';
 import '../core/report.dart';
 import '../core/share_utils.dart';
@@ -103,6 +104,7 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
           at: DateTime.now(),
         ));
         await commitUsage(UsageKind.protect);
+        await OnboardingFlags.instance.markProtectedOnce();
       } else {
         setState(() => _workingStep = 'Extracting & verifying');
         final outcome = await verifyPdfFingerprint(bytes, claimKey: claimKey);
@@ -270,7 +272,9 @@ class _PdfToolScreenState extends State<PdfToolScreen> {
                 title: _mode == PdfMode.embed
                     ? 'Choose a PDF to fingerprint'
                     : 'Choose a PDF to check',
-                hint: 'Processed locally — the document never leaves your device',
+                hint: _mode == PdfMode.embed
+                    ? 'PDF only — print/scan or flatten may remove the fingerprint'
+                    : 'Check the original PDF you protected',
                 buttonLabel: 'Choose a PDF',
                 onPick: _pickAndRun,
                 fileName: _fileName,
