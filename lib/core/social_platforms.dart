@@ -35,7 +35,7 @@ class SocialPlatformInfo {
     id: SocialPlatform.instagram,
     label: 'Instagram',
     shortLabel: 'IG',
-    hint: 'Reels, posts, and Stories you export or share into Signata.',
+    hint: 'Best: share the Reel/photo into Signata. Post URLs often hide the real file.',
     androidPackages: ['com.instagram.android'],
     urlSchemes: ['instagram'],
     hostMatchers: ['instagram.com', 'www.instagram.com', 'instagr.am'],
@@ -47,7 +47,7 @@ class SocialPlatformInfo {
     id: SocialPlatform.tiktok,
     label: 'TikTok',
     shortLabel: 'TT',
-    hint: 'Videos you download or share from TikTok before posting again.',
+    hint: 'Best: share the video file into Signata. TikTok page links rarely expose media.',
     androidPackages: [
       'com.zhiliaoapp.musically',
       'com.ss.android.ugc.trill',
@@ -69,7 +69,7 @@ class SocialPlatformInfo {
     id: SocialPlatform.x,
     label: 'X',
     shortLabel: 'X',
-    hint: 'Images and clips you share from X, or post after fingerprinting.',
+    hint: 'Best: share the image/clip into Signata. X post links are a fallback only.',
     androidPackages: ['com.twitter.android'],
     urlSchemes: ['twitter', 'x'],
     hostMatchers: [
