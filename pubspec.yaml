@@ -2,7 +2,7 @@ name: signata
 description: "Signata — invisible ownership, verifiable authenticity. Digital watermarking for images, audio, video, and PDFs."
 publish_to: 'none'
 
-version: 1.2.1+7
+version: 1.2.2+8
 
 environment:
   sdk: ^3.12.2

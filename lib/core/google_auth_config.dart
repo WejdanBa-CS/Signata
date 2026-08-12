@@ -7,11 +7,11 @@
 ///    the Play App Signing SHA-1 from Play Console → App integrity).
 ///
 /// Sources (first match wins):
-/// 1. Runtime override saved from the login screen (secure storage)
+/// 1. Runtime override saved from Account (secure storage)
 /// 2. `--dart-define=GOOGLE_SERVER_CLIENT_ID=...` or `--dart-define-from-file=`
 library;
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'secure_store.dart';
 
 class GoogleAuthConfig {
   GoogleAuthConfig._();
@@ -43,9 +43,7 @@ class GoogleAuthConfig {
   static String? _runtimeServerClientId;
   static bool _loaded = false;
 
-  static final _secure = const FlutterSecureStorage(
-    aOptions: AndroidOptions(),
-  );
+  static final _secure = signataSecureStorage;
 
   static String get serverClientId {
     final runtime = _runtimeServerClientId?.trim() ?? '';
@@ -54,6 +52,10 @@ class GoogleAuthConfig {
   }
 
   static bool get hasServerClientId => serverClientId.isNotEmpty;
+
+  static bool get isFromDartDefine =>
+      _defineServerClientId.trim().isNotEmpty &&
+      (_runtimeServerClientId == null || _runtimeServerClientId!.trim().isEmpty);
 
   static bool get isLikelyClientId =>
       RegExp(r'^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$')
