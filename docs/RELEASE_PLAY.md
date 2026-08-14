@@ -41,6 +41,18 @@ Uses `google_oauth.env` when present; otherwise email-only Google button stays h
 - Passwords: `android/key.properties` (local only, gitignored)
 - Keep a secure backup of both — losing them blocks future updates unless you use Play App Signing recovery.
 
+## Store listing screenshots
+
+Phone captures for Play Console / README live in [`docs/screenshots/`](./screenshots/):
+
+- `01-home.png` — hero / brand
+- `02-capabilities-image.png` — image watermarking
+- `03-capabilities-audio-video.png` — audio + video
+- `04-tools.png` — protect & verify hub
+- `05-trace.png` — Trace / Instagram scan
+
+Upload these (or cropped phone-frame variants) under Play Console → Main store listing → Phone screenshots.
+
 ## Smoke test before upload
 
 - [ ] Email signup → activate → Home
