@@ -35,3 +35,15 @@ Out of scope:
 ## Safe harbor
 
 Good-faith research that avoids privacy violations and service disruption is appreciated.
+
+## Secrets checklist
+
+**Never commit:**
+
+- `google_oauth.env` (use `google_oauth.example.env` only)
+- `android/key.properties`, `*.jks`, `*.keystore`
+- Real Google OAuth client IDs in source (build with `--dart-define-from-file` or paste at runtime in Account)
+
+Android SHA-1 fingerprints in docs are **not secrets** (they appear in signed APKs) but keep upload keystore passwords local only.
+
+CI runs a basic secret pattern scan on every push.
