@@ -5,6 +5,7 @@ import '../core/auth.dart';
 import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import 'privacy_policy_screen.dart';
+import 'terms_of_use_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -361,17 +362,38 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: const TextStyle(color: EmColors.primary),
                           ),
                         ),
-                        TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => PrivacyPolicyScreen.open(context),
-                          child: const Text(
-                            'Privacy Policy',
-                            style: TextStyle(
-                              color: EmColors.mutedForeground,
-                              fontSize: 13,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => PrivacyPolicyScreen.open(context),
+                              child: const Text(
+                                'Privacy Policy',
+                                style: TextStyle(
+                                  color: EmColors.mutedForeground,
+                                  fontSize: 13,
+                                ),
+                              ),
                             ),
-                          ),
+                            const Text('·',
+                                style: TextStyle(
+                                    color: EmColors.mutedForeground,
+                                    fontSize: 13)),
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => TermsOfUseScreen.open(context),
+                              child: const Text(
+                                'Terms',
+                                style: TextStyle(
+                                  color: EmColors.mutedForeground,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(

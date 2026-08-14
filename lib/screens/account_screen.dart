@@ -18,6 +18,7 @@ import '../theme.dart';
 import '../widgets/em_widgets.dart';
 import '../widgets/usage_paywall.dart';
 import 'privacy_policy_screen.dart';
+import 'terms_of_use_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -142,12 +143,33 @@ class AccountScreen extends StatelessWidget {
                     color: EmColors.mutedForeground),
               ),
               const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: () => PrivacyPolicyScreen.open(context),
-                icon: const Icon(Icons.privacy_tip_outlined, size: 18),
-                label: const Text('Privacy Policy'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => PrivacyPolicyScreen.open(context),
+                    icon: const Icon(Icons.privacy_tip_outlined, size: 18),
+                    label: const Text('Privacy Policy'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => TermsOfUseScreen.open(context),
+                    icon: const Icon(Icons.gavel_outlined, size: 18),
+                    label: const Text('Terms of Use'),
+                  ),
+                ],
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          '© ${DateTime.now().year} Wejdan Al Amri · Signata · All rights reserved',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 11,
+            height: 1.45,
+            color: EmColors.mutedForeground,
           ),
         ),
       ],

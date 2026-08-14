@@ -1057,18 +1057,10 @@ class _Footer extends StatelessWidget {
           const SizedBox(height: 20),
           const Divider(),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '© ${DateTime.now().year} Signata',
-                style: const TextStyle(
-                    fontSize: 11, color: EmColors.mutedForeground),
-              ),
-              Text('RESEARCH & PROTOTYPE PHASE',
-                  style: emMonoLabel(
-                      color: EmColors.mutedForeground, size: 9)),
-            ],
+          Text(
+            '© ${DateTime.now().year} Wejdan Al Amri · Signata · All rights reserved',
+            style: const TextStyle(
+                fontSize: 11, height: 1.45, color: EmColors.mutedForeground),
           ),
         ],
       ),

@@ -99,7 +99,8 @@ website-source/   # original React site (reference)
 
 ## Privacy
 
-Full policy: [`PRIVACY.md`](PRIVACY.md) · hosted copy in [`docs/privacy.html`](docs/privacy.html)
+Full policy: [`PRIVACY.md`](PRIVACY.md) · hosted copy in [`docs/privacy.html`](docs/privacy.html)  
+Terms: [`docs/terms.html`](docs/terms.html)
 
 ## License & copyright
 
