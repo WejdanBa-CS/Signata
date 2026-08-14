@@ -6,6 +6,24 @@ Native Flutter app for digital watermarking — images, audio, video, and PDFs �
 
 **Latest release:** [v1.2.4](https://github.com/WejdanBa-CS/Signata/releases/tag/v1.2.4)
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/01-home.png" alt="Signata home" width="180" />
+  <img src="docs/screenshots/02-capabilities-image.png" alt="Image watermarking" width="180" />
+  <img src="docs/screenshots/03-capabilities-audio-video.png" alt="Audio and video" width="180" />
+  <img src="docs/screenshots/04-tools.png" alt="Tools hub" width="180" />
+  <img src="docs/screenshots/05-trace.png" alt="Trace online" width="180" />
+</p>
+
+| Screen | File |
+|--------|------|
+| Home | [`docs/screenshots/01-home.png`](docs/screenshots/01-home.png) |
+| Image watermarking | [`docs/screenshots/02-capabilities-image.png`](docs/screenshots/02-capabilities-image.png) |
+| Audio & video | [`docs/screenshots/03-capabilities-audio-video.png`](docs/screenshots/03-capabilities-audio-video.png) |
+| Tools | [`docs/screenshots/04-tools.png`](docs/screenshots/04-tools.png) |
+| Trace | [`docs/screenshots/05-trace.png`](docs/screenshots/05-trace.png) |
+
 ## Features
 
 - **Protect** — embed signed ownership fingerprints in images, audio, video (MP4/MOV), and PDFs
@@ -94,6 +112,7 @@ lib/
   main.dart
 assets/
 docs/             # Play release, privacy HTML, delete-account page
+docs/screenshots/ # App store / README phone screenshots
 website-source/   # original React site (reference)
 ```
 
