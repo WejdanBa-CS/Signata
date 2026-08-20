@@ -10,6 +10,7 @@ import 'claim_crypto.dart';
 import 'claim_registry.dart';
 import 'image_watermark.dart';
 import 'pdf_fingerprint.dart';
+import 'safe_url.dart';
 import 'social_platforms.dart';
 import 'trace_models.dart';
 import 'trace_store.dart';
@@ -39,10 +40,16 @@ class UrlTracer {
     bool persist = true,
     bool addToWatchlist = false,
   }) async {
-    final url = rawUrl.trim();
-    if (!_looksLikeHttpUrl(url)) {
-      throw ArgumentError('Enter a valid http(s) URL to a media file.');
+    if (!TraceRateLimiter.instance.allow()) {
+      throw ArgumentError(
+        'Too many trace scans this hour. Try again later.',
+      );
     }
+    final parsed = SafeUrl.parseTraceUrl(rawUrl);
+    if (!parsed.isOk) {
+      throw ArgumentError(parsed.error ?? 'Invalid URL.');
+    }
+    final url = parsed.uri!.toString();
 
     var fetchUrl = url;
     String? socialNote;
@@ -51,7 +58,13 @@ class UrlTracer {
       final resolved = await SocialMediaResolver.instance.resolve(url);
       socialNote = resolved?.note;
       if (resolved?.mediaUrl != null && resolved!.mediaUrl!.isNotEmpty) {
-        fetchUrl = resolved.mediaUrl!;
+        final mediaParsed = SafeUrl.parseTraceUrl(resolved.mediaUrl!);
+        if (mediaParsed.isOk) {
+          fetchUrl = mediaParsed.uri!.toString();
+        } else {
+          socialNote = mediaParsed.error ??
+              'Resolved media URL was blocked for security.';
+        }
       } else if (resolved != null) {
         final sighting = TraceSighting(
           id: _id(),
@@ -85,8 +98,12 @@ class UrlTracer {
     Uint8List bytes;
     String? contentType;
     try {
+      final fetchUri = SafeUrl.parseTraceUrl(fetchUrl);
+      if (!fetchUri.isOk) {
+        throw Exception(fetchUri.error ?? 'Blocked URL.');
+      }
       final response = await http.get(
-        Uri.parse(fetchUrl),
+        fetchUri.uri!,
         headers: {
           'User-Agent':
               'Mozilla/5.0 (compatible; SignataTrace/1.0; +https://signata.app)',
@@ -252,13 +269,6 @@ class UrlTracer {
       out.add(result);
     }
     return out;
-  }
-
-  static bool _looksLikeHttpUrl(String url) {
-    final uri = Uri.tryParse(url);
-    return uri != null &&
-        (uri.scheme == 'http' || uri.scheme == 'https') &&
-        uri.host.isNotEmpty;
   }
 
   static bool _looksLikeDirectMedia(String url) {
