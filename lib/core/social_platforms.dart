@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'safe_url.dart';
+
 enum SocialPlatform { instagram, tiktok, x, other }
 
 class SocialPlatformInfo {
@@ -126,14 +128,25 @@ class SocialMediaResolver {
       'Mozilla/5.0 (compatible; SignataTrace/1.0; +https://signata.app)';
 
   Future<ResolvedSocialMedia?> resolve(String rawUrl) async {
-    final url = rawUrl.trim();
+    final parsed = SafeUrl.parseTraceUrl(rawUrl);
+    if (!parsed.isOk) {
+      final platform = SocialPlatformInfo.fromUrl(rawUrl);
+      if (platform == null) return null;
+      return ResolvedSocialMedia(
+        platform: platform,
+        pageUrl: rawUrl.trim(),
+        mediaUrl: null,
+        note: parsed.error,
+      );
+    }
+    final url = parsed.uri!.toString();
     final platform = SocialPlatformInfo.fromUrl(url);
     if (platform == null) return null;
 
     try {
       final response = await http
           .get(
-            Uri.parse(url),
+            parsed.uri!,
             headers: {
               'User-Agent': _ua,
               'Accept': 'text/html,application/xhtml+xml',
@@ -178,10 +191,21 @@ class SocialMediaResolver {
         );
       }
 
+      final absolute = _absolutize(mediaUrl, url);
+      final mediaParsed = SafeUrl.parseTraceUrl(absolute);
+      if (!mediaParsed.isOk) {
+        return ResolvedSocialMedia(
+          platform: platform,
+          pageUrl: url,
+          mediaUrl: null,
+          note: mediaParsed.error ?? 'Resolved media URL was blocked for security.',
+        );
+      }
+
       return ResolvedSocialMedia(
         platform: platform,
         pageUrl: url,
-        mediaUrl: _absolutize(mediaUrl, url),
+        mediaUrl: mediaParsed.uri!.toString(),
         note: null,
       );
     } catch (error) {

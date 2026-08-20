@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signata/core/claim_crypto.dart';
 import 'package:signata/core/claim_registry.dart';
+import 'package:signata/core/safe_url.dart';
 import 'package:signata/core/trace_models.dart';
 import 'package:signata/core/trace_store.dart';
 import 'package:signata/core/url_tracer.dart';
@@ -14,6 +15,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     ClaimRegistry.configure(remoteBaseUrl: '');
+    TraceRateLimiter.instance.resetForTests();
   });
 
   group('claim registry', () {
@@ -66,6 +68,24 @@ void main() {
     test('rejects non-http urls', () async {
       expect(
         () => UrlTracer.instance.scanUrl('ftp://x/y.png', persist: false),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('rejects private network urls', () async {
+      expect(
+        () => UrlTracer.instance.scanUrl('http://192.168.0.5/a.png', persist: false),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => UrlTracer.instance.scanUrl('http://127.0.0.1/a.png', persist: false),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('watchlist rejects blocked urls', () async {
+      expect(
+        () => TraceStore.instance.addWatchTarget('http://localhost/x'),
         throwsA(isA<ArgumentError>()),
       );
     });

@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'local_data.dart';
+import 'safe_url.dart';
 import 'trace_models.dart';
 
 class TraceStore {
@@ -52,7 +53,11 @@ class TraceStore {
 
   Future<WatchTarget> addWatchTarget(String url, {String? label}) async {
     await _ensureMigrated();
-    final normalized = url.trim();
+    final parsed = SafeUrl.parseTraceUrl(url);
+    if (!parsed.isOk) {
+      throw ArgumentError(parsed.error ?? 'Invalid URL.');
+    }
+    final normalized = parsed.uri!.toString();
     final existing = List<WatchTarget>.from(await listWatchTargets());
     final prior = existing.where((w) => w.url == normalized).toList();
     if (prior.isNotEmpty) return prior.first;
