@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth.dart';
 import 'local_data.dart';
+import 'safe_url.dart';
 import 'trace_models.dart';
 
 class ClaimRegistry {
@@ -28,7 +29,25 @@ class ClaimRegistry {
   );
 
   static void configure({String? remoteBaseUrl}) {
-    if (remoteBaseUrl != null) ClaimRegistry.remoteBaseUrl = remoteBaseUrl;
+    if (remoteBaseUrl == null) return;
+    final trimmed = remoteBaseUrl.trim();
+    if (trimmed.isEmpty) {
+      ClaimRegistry.remoteBaseUrl = '';
+      return;
+    }
+    final parsed = SafeUrl.parseRegistryBase(trimmed);
+    if (!parsed.isOk) {
+      debugPrint('Invalid registry URL ignored: ${parsed.error}');
+      ClaimRegistry.remoteBaseUrl = '';
+      return;
+    }
+    ClaimRegistry.remoteBaseUrl = parsed.uri!.toString().replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static Uri? get _remoteBaseUri {
+    if (!hasRemote) return null;
+    final parsed = SafeUrl.parseRegistryBase(remoteBaseUrl);
+    return parsed.isOk ? parsed.uri : null;
   }
 
   static bool get hasRemote => remoteBaseUrl.trim().isNotEmpty;
@@ -78,14 +97,16 @@ class ClaimRegistry {
 
   Future<PublishedClaim?> findByReference(String reference) async {
     final needle = reference.trim().toUpperCase();
-    if (needle.isEmpty) return null;
+    if (needle.isEmpty || needle.length > 128) return null;
     for (final claim in await listLocal()) {
       if (claim.reference.toUpperCase() == needle) return claim;
     }
-    if (hasRemote) {
+    final base = _remoteBaseUri;
+    if (base != null) {
       try {
-        final uri = Uri.parse('${remoteBaseUrl.replaceAll(RegExp(r'/+$'), '')}'
-            '/claims/${Uri.encodeComponent(reference)}');
+        final uri = base.replace(
+          path: '${base.path.replaceAll(RegExp(r'/+$'), '')}/claims/${Uri.encodeComponent(needle)}',
+        );
         final response = await http.get(uri).timeout(const Duration(seconds: 12));
         if (response.statusCode == 200) {
           final decoded = jsonDecode(response.body);
@@ -128,10 +149,12 @@ class ClaimRegistry {
       note: note,
     );
 
-    if (hasRemote) {
+    final base = _remoteBaseUri;
+    if (base != null) {
       try {
-        final uri = Uri.parse(
-            '${remoteBaseUrl.replaceAll(RegExp(r'/+$'), '')}/claims');
+        final uri = base.replace(
+          path: '${base.path.replaceAll(RegExp(r'/+$'), '')}/claims',
+        );
         final response = await http
             .post(
               uri,
