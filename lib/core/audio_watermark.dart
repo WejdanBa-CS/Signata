@@ -340,32 +340,6 @@ String? _extractScattered(Uint8List pcm) {
   }
 }
 
-({int bitsUsed, int capacityBits}) _embedSequential(
-  Uint8List pcm,
-  String payload,
-) {
-  final body = utf8.encode(payload);
-  final header = ascii.encode(_magic);
-  final bytes = Uint8List(header.length + 4 + body.length);
-  bytes.setAll(0, header);
-  bytes[4] = (body.length >>> 24) & 0xff;
-  bytes[5] = (body.length >>> 16) & 0xff;
-  bytes[6] = (body.length >>> 8) & 0xff;
-  bytes[7] = body.length & 0xff;
-  bytes.setAll(8, body);
-
-  final capacity = pcm.length ~/ 2;
-  final totalBits = bytes.length * 8;
-  if (totalBits > capacity) throw const AudioTooShortException();
-
-  var bit = 0;
-  for (var i = 0; i < pcm.length && bit < totalBits; i += 2, bit++) {
-    final byte = bytes[bit >> 3];
-    final value = (byte >> (7 - (bit & 7))) & 1;
-    pcm[i] = (pcm[i] & 0xfe) | value;
-  }
-  return (bitsUsed: totalBits, capacityBits: capacity);
-}
 
 String? _extractSequential(Uint8List pcm) {
   Uint8List? readBytes(int count, int startBit) {

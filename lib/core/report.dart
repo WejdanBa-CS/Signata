@@ -127,7 +127,7 @@ SealedReport sealReport(ReportBody body, {ClaimKey? claimKey}) {
       'algorithm': 'SHA-256 + HMAC-SHA-256',
       'canonicalization': 'sorted-keys-json',
       'binding': binding,
-      if (kid != null) 'kid': kid,
+      ...? (kid != null ? {'kid': kid} : null),
       'nonce': nonce,
       'bodyDigest': bodyDigest,
       'signature': signature,

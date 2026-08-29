@@ -656,17 +656,21 @@ class _TraceScreenState extends State<TraceScreen>
                     ),
                   ),
                   const SizedBox(height: 14),
-                  FilledButton.icon(
-                    onPressed: _busy ? null : _scanLocalFromPicker,
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.folder_open_rounded, size: 18),
-                    label: Text(_busy ? 'Checking…' : 'Check local file'),
-                  ),
+                  Semantics(
+                      button: !_busy,
+                      enabled: true,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _scanLocalFromPicker,
+                        icon: _busy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.folder_open_rounded, size: 18),
+                        label: Text(_busy ? 'Checking…' : 'Check local file'),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -702,20 +706,28 @@ class _TraceScreenState extends State<TraceScreen>
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      FilledButton.tonalIcon(
-                        onPressed: _busy ? null : _protectFromPicker,
-                        icon: const Icon(Icons.auto_awesome, size: 18),
-                        label: const Text('Fingerprint media'),
+                      Semantics(
+                        button: !_busy,
+                        enabled: true,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _busy ? null : _protectFromPicker,
+                          icon: const Icon(Icons.auto_awesome, size: 18),
+                          label: const Text('Fingerprint media'),
+                        ),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: _busy || _protected.isEmpty
-                            ? null
-                            : _shareProtected,
-                        icon: const Icon(Icons.ios_share, size: 18),
-                        label: Text(
-                          _protected.isEmpty
-                              ? 'Share to app'
-                              : 'Share ${_protected.length} to ${platform?.shortLabel ?? 'app'}',
+                      Semantics(
+                        button: !_busy && _protected.isNotEmpty,
+                        enabled: true,
+                        child: OutlinedButton.icon(
+                          onPressed: _busy || _protected.isEmpty
+                              ? null
+                              : _shareProtected,
+                          icon: const Icon(Icons.ios_share, size: 18),
+                          label: Text(
+                            _protected.isEmpty
+                                ? 'Share to app'
+                                : 'Share ${_protected.length} to ${platform?.shortLabel ?? 'app'}',
+                          ),
                         ),
                       ),
                     ],
@@ -833,10 +845,14 @@ class _TraceScreenState extends State<TraceScreen>
                       ),
                     ),
                     const SizedBox(height: 6),
-                    OutlinedButton.icon(
-                      onPressed: _busy ? null : () => _scan(),
-                      icon: const Icon(Icons.radar, size: 18),
-                      label: const Text('Scan link(s) anyway'),
+                    Semantics(
+                      button: !_busy,
+                      enabled: true,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _scan(),
+                        icon: const Icon(Icons.radar, size: 18),
+                        label: const Text('Scan link(s) anyway'),
+                      ),
                     ),
                   ],
                 ),

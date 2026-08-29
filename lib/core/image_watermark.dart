@@ -242,34 +242,6 @@ String? _extractScattered(Uint8List rgba) {
   }
 }
 
-({int bitsUsed, int capacityBits}) _embedSequential(
-  Uint8List rgba,
-  String payload,
-) {
-  final body = utf8.encode(payload);
-  final header = ascii.encode(_magic);
-  final bytes = Uint8List(header.length + 4 + body.length);
-  bytes.setAll(0, header);
-  bytes[4] = (body.length >>> 24) & 0xff;
-  bytes[5] = (body.length >>> 16) & 0xff;
-  bytes[6] = (body.length >>> 8) & 0xff;
-  bytes[7] = body.length & 0xff;
-  bytes.setAll(8, body);
-
-  final capacity = _rgbaSlotCount(rgba.length);
-  final totalBits = bytes.length * 8;
-  if (bytes.length > capacity ~/ 8) throw const ImageTooSmallException();
-
-  var bit = 0;
-  for (var i = 0; i < rgba.length && bit < totalBits; i += 4) {
-    for (var c = 0; c < 3 && bit < totalBits; c++, bit++) {
-      final byte = bytes[bit >> 3];
-      final value = (byte >> (7 - (bit & 7))) & 1;
-      rgba[i + c] = (rgba[i + c] & 0xfe) | value;
-    }
-  }
-  return (bitsUsed: totalBits, capacityBits: capacity);
-}
 
 String? _extractSequential(Uint8List rgba) {
   Uint8List? readBytes(int count, int startBit) {

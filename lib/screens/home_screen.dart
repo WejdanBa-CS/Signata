@@ -297,27 +297,35 @@ class _CheckRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(
-            done ? Icons.check_circle : Icons.radio_button_unchecked,
-            size: 18,
-            color: done ? EmColors.accent : EmColors.mutedForeground,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13.5,
-                decoration: done ? TextDecoration.lineThrough : null,
-                color: done ? EmColors.mutedForeground : EmColors.foreground,
+      child: Semantics(
+        checked: done,
+        button: onTap != null && !done,
+        enabled: true,
+        child: Row(
+          children: [
+            Icon(
+              done ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 18,
+              color: done ? EmColors.accent : EmColors.mutedForeground,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                  color: done ? EmColors.mutedForeground : EmColors.foreground,
+                ),
               ),
             ),
-          ),
-          if (!done && onTap != null)
-            TextButton(onPressed: onTap, child: Text(action)),
-        ],
+            if (!done && onTap != null)
+              TextButton(
+                onPressed: onTap,
+                child: Text(action),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -400,13 +408,21 @@ class _Hero extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  FilledButton(
-                    onPressed: () => onOpenTool(EmTool.image),
-                    child: const Text('Try the image tool'),
+                  Semantics(
+                    button: true,
+                    enabled: true,
+                    child: FilledButton(
+                      onPressed: () => onOpenTool(EmTool.image),
+                      child: const Text('Try the image tool'),
+                    ),
                   ),
-                  OutlinedButton(
-                    onPressed: () => onOpenTool(EmTool.audio),
-                    child: const Text('Protect audio'),
+                  Semantics(
+                    button: true,
+                    enabled: true,
+                    child: OutlinedButton(
+                      onPressed: () => onOpenTool(EmTool.audio),
+                      child: const Text('Protect audio'),
+                    ),
                   ),
                 ],
               ),

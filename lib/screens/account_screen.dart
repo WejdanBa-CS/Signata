@@ -107,7 +107,10 @@ class AccountScreen extends StatelessWidget {
                     color: EmColors.mutedForeground),
               ),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              Semantics(
+              button: true,
+              enabled: true,
+              child: OutlinedButton.icon(
                 onPressed: () => AuthService.instance.signOut(),
                 icon: const Icon(Icons.logout, size: 18),
                 label: const Text('Sign out'),
@@ -117,6 +120,7 @@ class AccountScreen extends StatelessWidget {
                       color: EmColors.destructive.withValues(alpha: 0.5)),
                 ),
               ),
+            ),
             ],
           ),
         ),
